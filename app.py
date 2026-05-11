@@ -77,7 +77,7 @@ column_map = {
     "name": "Name",
     "sector": "Sector",
     "price": "Price",
-    "pe_trailing": "PE (TTM)",
+    "pe_trailing": "Trailing P/E",
     "pe_forward": "Fwd PE",
     "peg_ratio": "PEG",
     "rsi_14": "RSI(14)",
@@ -99,7 +99,7 @@ display_df = df.rename(columns=column_map)
 
 # Reorder columns with Buy Score first
 desired_cols = [
-    "Symbol", "Name", "Buy Score", "Price", "PE (TTM)", "Fwd PE", "PEG",
+    "Symbol", "Name", "Buy Score", "Price", "Trailing P/E", "Fwd PE", "PEG",
     "RSI(14)", "Exhaustion", "Tech Score", "Comm Score",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
     "Vol 20d", "Vol 50d", "Updated"
@@ -304,7 +304,7 @@ if selected_symbol:
         with mcol1:
             st.metric("Price", f"${row.get('price', 'N/A')}")
         with mcol2:
-            st.metric("PE (TTM)", f"{row.get('pe_trailing', 'N/A')}")
+            st.metric("Trailing P/E", f"{row.get('pe_trailing', 'N/A')}")
         with mcol3:
             st.metric("Fwd PE", f"{row.get('pe_forward', 'N/A')}")
         with mcol4:
