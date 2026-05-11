@@ -81,6 +81,10 @@ column_map = {
     "pe_forward": "Fwd PE",
     "peg_ratio": "PEG",
     "projected_cagr": "Est CAGR %",
+    "beta": "Beta",
+    "target_upside": "Target Upside %",
+    "week_52_high": "52W High",
+    "week_52_low": "52W Low",
     "rsi_14": "RSI(14)",
     "volume_20d_avg": "Vol 20d",
     "volume_50d_avg": "Vol 50d",
@@ -101,6 +105,7 @@ display_df = df.rename(columns=column_map)
 # Reorder columns with Buy Score first
 desired_cols = [
     "Symbol", "Name", "Buy Score", "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
+    "Target Upside %", "Beta", "52W High", "52W Low",
     "RSI(14)", "Exhaustion", "Tech Score", "Comm Score",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
     "Vol 20d", "Vol 50d", "Updated"
@@ -168,6 +173,20 @@ def style_df(df):
                 return "color: #44ff44"
             elif val and val < 0:
                 return "color: #ff4444"
+        elif col == "Target Upside %":
+            if val and val > 30:
+                return "color: #44ff44; font-weight: bold"
+            elif val and val > 15:
+                return "color: #44ff44"
+            elif val and val < -10:
+                return "color: #ff4444"
+        elif col == "Beta":
+            if val and val > 2.0:
+                return "color: #ff4444; font-weight: bold"
+            elif val and val > 1.5:
+                return "color: #ffaa44"
+            elif val and val < 0.8:
+                return "color: #44ff44"
         elif col in ("vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
             if val and val > 0:
                 return "color: #44ff44"
@@ -308,7 +327,7 @@ if selected_symbol:
         # Key metrics cards
         row = df[df["symbol"] == selected_symbol].iloc[0]
         st.markdown("#### Key Metrics")
-        mcol1, mcol2, mcol3, mcol4, mcol5, mcol6, mcol7 = st.columns(7)
+        mcol1, mcol2, mcol3, mcol4, mcol5 = st.columns(5)
         with mcol1:
             st.metric("Price", f"${row.get('price', 'N/A')}")
         with mcol2:
@@ -323,10 +342,34 @@ if selected_symbol:
                 st.metric("Est CAGR", "N/A")
             else:
                 st.metric("Est CAGR", f"{cagr}%")
+
+        mcol6, mcol7, mcol8, mcol9, mcol10 = st.columns(5)
         with mcol6:
-            st.metric("RSI(14)", f"{row.get('rsi_14', 'N/A')}")
+            upside = row.get('target_upside')
+            if upside is None or (isinstance(upside, float) and upside != upside):
+                st.metric("Target Upside", "N/A")
+            else:
+                st.metric("Target Upside", f"{upside}%")
         with mcol7:
-            st.metric("Exhaustion", row.get('exhaustion_level', 'N/A'))
+            beta = row.get('beta')
+            if beta is None or (isinstance(beta, float) and beta != beta):
+                st.metric("Beta", "N/A")
+            else:
+                st.metric("Beta", f"{beta}")
+        with mcol8:
+            w52h = row.get('week_52_high')
+            if w52h is None or (isinstance(w52h, float) and w52h != w52h):
+                st.metric("52W High", "N/A")
+            else:
+                st.metric("52W High", f"${w52h}")
+        with mcol9:
+            w52l = row.get('week_52_low')
+            if w52l is None or (isinstance(w52l, float) and w52l != w52l):
+                st.metric("52W Low", "N/A")
+            else:
+                st.metric("52W Low", f"${w52l}")
+        with mcol10:
+            st.metric("RSI(14)", f"{row.get('rsi_14', 'N/A')}")
 
         st.markdown("#### Scores")
         

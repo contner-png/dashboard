@@ -89,6 +89,11 @@ def calculate_buy_score(
     trailing_pe: float,
     forward_pe: float,
     est_growth: float,
+    beta: float,
+    target_upside: float,
+    week_52_high: float,
+    week_52_low: float,
+    current_price: float,
     macd_signal: str,
     price_vs_50ma: float,
     price_vs_200ma: float,
@@ -118,6 +123,17 @@ def calculate_buy_score(
     # 2. Fundamental Quality (0-25 pts)
     # Commentary score 1-4 mapped to 10-25 pts
     comm_points = 10 + ((commentary_score - 1) / 3) * 15
+
+    # Analyst target upside bonus
+    if target_upside and not np.isnan(target_upside):
+        if target_upside > 30:
+            comm_points += 4
+        elif target_upside > 15:
+            comm_points += 2
+        elif target_upside > 5:
+            comm_points += 1
+        elif target_upside < -10:
+            comm_points -= 2  # analysts see downside
     score += min(25, comm_points)
 
     # 3. Valuation Attractiveness (0-20 pts)
@@ -171,7 +187,20 @@ def calculate_buy_score(
         "High": 5,
         "Extreme": 0,
     }
-    score += exhaustion_map.get(exhaustion_level, 10)
+    timing_points = exhaustion_map.get(exhaustion_level, 10)
+
+    # 52-week range position bonus
+    # Closer to 52w low = better entry timing
+    if current_price and week_52_high and week_52_low and not np.isnan(current_price):
+        if week_52_high > week_52_low:
+            range_pct = (current_price - week_52_low) / (week_52_high - week_52_low)
+            if range_pct < 0.20:
+                timing_points += 5  # Near 52w low - excellent entry
+            elif range_pct < 0.40:
+                timing_points += 2
+            elif range_pct > 0.90:
+                timing_points -= 3  # Near 52w high - risky entry
+    score += max(0, min(20, timing_points))
 
     # 5. Risk / Momentum Balance (0-10 pts)
     # RSI ideal entry zone: 40-60 (not oversold, not overbought)
@@ -203,9 +232,24 @@ def calculate_buy_score(
     if volume_ratio and not np.isnan(volume_ratio):
         if volume_ratio > 1.1:
             vol_bonus += 2
-        elif volume_ratio > 0.95:
+
+    # Volume follow-through
+    if volume_ratio and not np.isnan(volume_ratio):
+        if volume_ratio > 0.95:
             vol_bonus += 1
 
-    score += max(0, min(10, rsi_points - ma_penalty + vol_bonus))
+    # Beta penalty (high volatility = more risk)
+    beta_penalty = 0
+    if beta and not np.isnan(beta):
+        if beta > 2.0:
+            beta_penalty = 3
+        elif beta > 1.5:
+            beta_penalty = 2
+        elif beta > 1.2:
+            beta_penalty = 1
+        elif beta < 0.8:
+            beta_penalty = -1  # low beta = defensive bonus
+
+    score += max(0, min(10, rsi_points - ma_penalty + vol_bonus - beta_penalty))
 
     return int(round(score))

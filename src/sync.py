@@ -51,6 +51,13 @@ def sync_ticker(symbol: str) -> bool:
         if eg and not (isinstance(eg, float) and eg != eg):
             projected_cagr = round(eg * 100 / 3, 1)  # Roughly convert next-year to sustainable
 
+    # Compute target upside % and current price (needed for buy score)
+    current_price = info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1]
+    target_mean = info.get("targetMeanPrice")
+    target_upside = None
+    if target_mean and current_price and current_price > 0:
+        target_upside = round((target_mean - current_price) / current_price * 100, 1)
+
     # Composite buy score
     buy_score = calculate_buy_score(
         technical_score=tech_score,
@@ -61,6 +68,11 @@ def sync_ticker(symbol: str) -> bool:
         trailing_pe=info.get("trailingPE"),
         forward_pe=info.get("forwardPE"),
         est_growth=projected_cagr,
+        beta=info.get("beta"),
+        target_upside=target_upside,
+        week_52_high=info.get("fiftyTwoWeekHigh"),
+        week_52_low=info.get("fiftyTwoWeekLow"),
+        current_price=current_price,
         macd_signal=macd_signal,
         price_vs_50ma=vs_50,
         price_vs_200ma=vs_200,
@@ -68,11 +80,18 @@ def sync_ticker(symbol: str) -> bool:
     )
 
     metrics = {
-        "price": round(info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1], 2),
+        "price": round(current_price, 2),
         "pe_trailing": info.get("trailingPE"),
         "pe_forward": info.get("forwardPE"),
         "peg_ratio": info.get("pegRatio"),
         "projected_cagr": projected_cagr,
+        "beta": info.get("beta"),
+        "target_mean": target_mean,
+        "target_high": info.get("targetHighPrice"),
+        "target_low": info.get("targetLowPrice"),
+        "target_upside": target_upside,
+        "week_52_high": info.get("fiftyTwoWeekHigh"),
+        "week_52_low": info.get("fiftyTwoWeekLow"),
         "rsi_14": exhaustion.get("rsi_14"),
         "volume_20d_avg": exhaustion.get("volume_20d_avg"),
         "volume_50d_avg": exhaustion.get("volume_50d_avg"),
