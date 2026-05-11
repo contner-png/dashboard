@@ -34,6 +34,23 @@ def sync_ticker(symbol: str) -> bool:
     vs_200 = calc_price_vs_ma(history["Close"], 200)
     _, _, macd_signal = calc_macd(history["Close"])
 
+    # Estimated CAGR: derive from PEG ratio (PEG = Forward PE / Growth)
+    # This gives the market-implied sustainable long-term growth rate
+    projected_cagr = None
+    peg = info.get("pegRatio")
+    fwd_pe = info.get("forwardPE")
+    trail_pe = info.get("trailingPE")
+    if peg and peg > 0:
+        if fwd_pe and not (isinstance(fwd_pe, float) and fwd_pe != fwd_pe):
+            projected_cagr = round(fwd_pe / peg, 1)
+        elif trail_pe and not (isinstance(trail_pe, float) and trail_pe != trail_pe):
+            projected_cagr = round(trail_pe / peg, 1)
+    # Fallback: use earningsGrowth dampened (next-year growth is typically 2-3x sustainable)
+    if projected_cagr is None:
+        eg = info.get("earningsGrowth")
+        if eg and not (isinstance(eg, float) and eg != eg):
+            projected_cagr = round(eg * 100 / 3, 1)  # Roughly convert next-year to sustainable
+
     # Composite buy score
     buy_score = calculate_buy_score(
         technical_score=tech_score,
@@ -43,21 +60,12 @@ def sync_ticker(symbol: str) -> bool:
         peg=info.get("pegRatio"),
         trailing_pe=info.get("trailingPE"),
         forward_pe=info.get("forwardPE"),
+        est_growth=projected_cagr,
         macd_signal=macd_signal,
         price_vs_50ma=vs_50,
         price_vs_200ma=vs_200,
         volume_ratio=exhaustion.get("volume_ratio"),
     )
-
-    # Projected CAGR: use earningsGrowth if available, else derive from PEG
-    projected_cagr = info.get("earningsGrowth")
-    if projected_cagr is None or (isinstance(projected_cagr, float) and projected_cagr != projected_cagr):
-        peg = info.get("pegRatio")
-        pe = info.get("trailingPE")
-        if peg and pe and peg > 0:
-            projected_cagr = pe / peg / 100  # Convert percentage to decimal
-    if projected_cagr is not None and not (isinstance(projected_cagr, float) and projected_cagr != projected_cagr):
-        projected_cagr = round(projected_cagr * 100, 1)  # Store as percentage
 
     metrics = {
         "price": round(info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1], 2),

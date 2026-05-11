@@ -88,6 +88,7 @@ def calculate_buy_score(
     peg: float,
     trailing_pe: float,
     forward_pe: float,
+    est_growth: float,
     macd_signal: str,
     price_vs_50ma: float,
     price_vs_200ma: float,
@@ -124,30 +125,44 @@ def calculate_buy_score(
     # PEG ratio scoring
     if peg and not np.isnan(peg):
         if peg < 1:
-            val_points += 12
+            val_points += 10
         elif peg < 2:
-            val_points += 9
+            val_points += 7
         elif peg < 3:
-            val_points += 5
+            val_points += 4
         else:
-            val_points += 2
+            val_points += 1
     else:
-        val_points += 5  # neutral if no PEG data
+        val_points += 4  # neutral if no PEG data
 
     # Forward PE discount vs Trailing PE
     if forward_pe and trailing_pe and not np.isnan(forward_pe) and not np.isnan(trailing_pe):
         pe_discount = (trailing_pe - forward_pe) / trailing_pe
         if pe_discount > 0.30:
-            val_points += 8
+            val_points += 6
         elif pe_discount > 0.15:
-            val_points += 5
+            val_points += 4
         elif pe_discount > 0:
-            val_points += 3
+            val_points += 2
         else:
-            val_points += 1
+            val_points += 0
     else:
-        val_points += 3
-    score += min(20, val_points)
+        val_points += 2
+
+    # Growth-adjusted valuation bonus
+    # High expected growth + reasonable forward PE = great value
+    if est_growth and not np.isnan(est_growth) and forward_pe and not np.isnan(forward_pe):
+        # PEG-like check using analyst growth vs forward PE
+        implied_peg = forward_pe / est_growth if est_growth > 0 else 999
+        if implied_peg < 0.5:
+            val_points += 6
+        elif implied_peg < 1.0:
+            val_points += 4
+        elif implied_peg < 2.0:
+            val_points += 2
+        elif est_growth < 0:
+            val_points -= 2  # penalty for expected earnings decline
+    score += max(0, min(20, val_points))
 
     # 4. Entry Timing / Exhaustion (0-20 pts)
     exhaustion_map = {
