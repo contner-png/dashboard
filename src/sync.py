@@ -18,7 +18,7 @@ def sync_ticker(symbol: str) -> bool:
     history = data["history"]
 
     # Ensure ticker exists in DB
-    add_ticker(symbol, get_company_name(info), get_sector(info))
+    add_ticker(symbol, get_company_name(info), get_sector(info, symbol))
 
     # Calculate indicators
     exhaustion = calculate_exhaustion(history)

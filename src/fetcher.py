@@ -31,5 +31,31 @@ def get_company_name(info: Dict) -> str:
     return info.get("longName") or info.get("shortName") or ""
 
 
-def get_sector(info: Dict) -> str:
-    return info.get("sector", "")
+# Manual sector overrides for ETFs, crypto, and tickers Yahoo Finance doesn't classify
+_MANUAL_SECTORS = {
+    # ETFs
+    "COPX": "Materials",
+    "EWZ": "Emerging Markets",
+    "GLDM": "Commodities",
+    "GRID": "Utilities",
+    "IHE": "Healthcare",
+    "IVV": "Broad Market",
+    "IWM": "Broad Market",
+    "KOID": "Technology",
+    "NLR": "Utilities",
+    "XBI": "Healthcare",
+    "XLP": "Consumer Defensive",
+    # Crypto
+    "ETH-USD": "Crypto",
+    "ONDO-USD": "Crypto",
+    "TON11419-USD": "Crypto",
+    "WTAO-USD": "Crypto",
+    "ZEC-USD": "Crypto",
+}
+
+
+def get_sector(info: Dict, symbol: str = "") -> str:
+    sector = info.get("sector", "")
+    if sector:
+        return sector
+    return _MANUAL_SECTORS.get(symbol.upper(), "")

@@ -342,6 +342,53 @@ if "buy_score" in df.columns:
             </div>
             """, unsafe_allow_html=True)
 
+# ---- SECTOR SUMMARY ----
+if "sector" in df.columns and "buy_score" in df.columns:
+    st.markdown("---")
+    st.subheader("🏛️ Sector Breakdown")
+    
+    # Compute sector stats
+    sector_stats = df.groupby("sector").agg(
+        count=("symbol", "count"),
+        avg_buy=("buy_score", "mean"),
+        top_symbol=("symbol", lambda x: x.iloc[0]),
+        top_score=("buy_score", "max"),
+    ).reset_index().sort_values("avg_buy", ascending=False)
+    
+    # Bar chart: sector avg Buy Score
+    fig_sector = go.Figure()
+    fig_sector.add_trace(go.Bar(
+        x=sector_stats["sector"],
+        y=sector_stats["avg_buy"],
+        text=[f"{v:.1f}" for v in sector_stats["avg_buy"]],
+        textposition="auto",
+        marker_color=["#1a5f1a" if v >= 65 else "#2e8b2e" if v >= 50 else "#daa520" if v >= 35 else "#b22222" for v in sector_stats["avg_buy"]],
+        name="Avg Buy Score",
+    ))
+    fig_sector.update_layout(
+        title="Average Buy Score by Sector",
+        xaxis_title="",
+        yaxis_title="Avg Buy Score",
+        template="plotly_dark",
+        height=350,
+        showlegend=False,
+    )
+    st.plotly_chart(fig_sector, use_container_width=True)
+    
+    # Sector cards
+    sec_cols = st.columns(min(6, len(sector_stats)))
+    for idx, (_, row) in enumerate(sector_stats.iterrows()):
+        with sec_cols[idx % len(sec_cols)]:
+            score = row["avg_buy"]
+            color = "#1a5f1a" if score >= 65 else "#2e8b2e" if score >= 50 else "#daa520" if score >= 35 else "#cd853f"
+            st.markdown(f"""
+            <div style="background-color: {color}; padding: 12px; border-radius: 8px; text-align: center; color: white; margin-bottom: 8px;">
+                <p style="margin: 0; font-size: 0.8em; opacity: 0.9; font-weight: 600;">{row['sector']}</p>
+                <p style="margin: 4px 0; font-size: 1.4em; font-weight: bold;">{score:.1f}</p>
+                <p style="margin: 0; font-size: 0.7em; opacity: 0.85;">{row['count']} tickers · Top: {row['top_symbol']} ({row['top_score']})</p>
+            </div>
+            """, unsafe_allow_html=True)
+
 # Summary stats
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
