@@ -31,6 +31,7 @@ def init_db():
             pe_trailing REAL,
             pe_forward REAL,
             peg_ratio REAL,
+            projected_cagr REAL,
             rsi_14 REAL,
             volume_20d_avg REAL,
             volume_50d_avg REAL,

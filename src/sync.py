@@ -49,11 +49,22 @@ def sync_ticker(symbol: str) -> bool:
         volume_ratio=exhaustion.get("volume_ratio"),
     )
 
+    # Projected CAGR: use earningsGrowth if available, else derive from PEG
+    projected_cagr = info.get("earningsGrowth")
+    if projected_cagr is None or (isinstance(projected_cagr, float) and projected_cagr != projected_cagr):
+        peg = info.get("pegRatio")
+        pe = info.get("trailingPE")
+        if peg and pe and peg > 0:
+            projected_cagr = pe / peg / 100  # Convert percentage to decimal
+    if projected_cagr is not None and not (isinstance(projected_cagr, float) and projected_cagr != projected_cagr):
+        projected_cagr = round(projected_cagr * 100, 1)  # Store as percentage
+
     metrics = {
         "price": round(info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1], 2),
         "pe_trailing": info.get("trailingPE"),
         "pe_forward": info.get("forwardPE"),
         "peg_ratio": info.get("pegRatio"),
+        "projected_cagr": projected_cagr,
         "rsi_14": exhaustion.get("rsi_14"),
         "volume_20d_avg": exhaustion.get("volume_20d_avg"),
         "volume_50d_avg": exhaustion.get("volume_50d_avg"),
