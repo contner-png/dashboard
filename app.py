@@ -102,9 +102,9 @@ column_map = {
 
 display_df = df.rename(columns=column_map)
 
-# Reorder columns with Buy Score first
+# Reorder columns: Sector first, then Symbol, then the rest
 desired_cols = [
-    "Symbol", "Name", "Buy Score", "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
+    "Sector", "Symbol", "Name", "Buy Score", "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
     "Target Upside %", "Beta", "52W High", "52W Low",
     "RSI(14)", "Exhaustion", "Tech Score", "Comm Score",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
@@ -114,127 +114,233 @@ desired_cols = [
 display_cols = [c for c in desired_cols if c in display_df.columns]
 display_df = display_df[display_cols]
 
-# Sort by buy score descending for display
-if "Buy Score" in display_df.columns:
-    display_df = display_df.sort_values("Buy Score", ascending=False, na_position="last")
+# Fill empty sectors
+if "Sector" in display_df.columns:
+    display_df["Sector"] = display_df["Sector"].fillna("Unknown").replace("", "Unknown")
 
-# Style function
-def style_df(df):
-    def _style(val, col):
-        if col == "Buy Score":
-            if val and val >= 80:
-                return "background-color: #1a5f1a; color: white; font-weight: bold"
-            elif val and val >= 65:
-                return "background-color: #2e8b2e; color: white"
-            elif val and val >= 50:
-                return "background-color: #daa520; color: black"
-            elif val and val >= 35:
-                return "background-color: #cd853f; color: black"
-            else:
-                return "background-color: #b22222; color: white"
-        elif col == "Tech Score":
-            if val == 4:
-                return "background-color: #1a5f1a; color: white; font-weight: bold"
-            elif val == 3:
-                return "background-color: #2e8b2e; color: white"
-            elif val == 2:
-                return "background-color: #daa520; color: black"
-            elif val == 1:
-                return "background-color: #cd853f; color: black"
-            else:
-                return "background-color: #b22222; color: white"
-        elif col == "Comm Score":
-            if val == 4:
-                return "background-color: #1a5f1a; color: white; font-weight: bold"
-            elif val == 3:
-                return "background-color: #2e8b2e; color: white"
-            elif val == 2:
-                return "background-color: #daa520; color: black"
-            else:
-                return "background-color: #b22222; color: white"
-        elif col == "Exhaustion":
-            if val == "Extreme":
-                return "background-color: #8b0000; color: white; font-weight: bold"
-            elif val == "High":
-                return "background-color: #cd5c5c; color: white"
-            elif val == "Building":
-                return "background-color: #f0e68c; color: black"
-            else:
-                return "background-color: #90ee90; color: black"
-        elif col == "RSI(14)":
-            if val and val > 70:
-                return "color: #ff4444; font-weight: bold"
-            elif val and val < 30:
-                return "color: #44ff44; font-weight: bold"
-        elif col == "Est CAGR %":
-            if val and val > 20:
-                return "color: #44ff44; font-weight: bold"
-            elif val and val > 0:
-                return "color: #44ff44"
-            elif val and val < 0:
-                return "color: #ff4444"
-        elif col == "Target Upside %":
-            if val and val > 30:
-                return "color: #44ff44; font-weight: bold"
-            elif val and val > 15:
-                return "color: #44ff44"
-            elif val and val < -10:
-                return "color: #ff4444"
-        elif col == "Beta":
-            if val and val > 2.0:
-                return "color: #ff4444; font-weight: bold"
-            elif val and val > 1.5:
-                return "color: #ffaa44"
-            elif val and val < 0.8:
-                return "color: #44ff44"
-        elif col in ("vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
-            if val and val > 0:
-                return "color: #44ff44"
-            elif val and val < 0:
-                return "color: #ff4444"
-        return ""
+# ---- SORT & FILTER CONTROLS ----
+st.subheader("📊 Portfolio Overview")
 
-    styled = df.copy()
-    for col in styled.columns:
-        styled[col] = styled[col].apply(lambda x, c=col: _style(x, c))
-    return styled
+sort_col1, sort_col2, filter_col = st.columns([2, 1, 2])
+with sort_col1:
+    sort_options = [c for c in display_df.columns if c != "Updated"]
+    sort_by = st.selectbox("Sort by", sort_options, index=sort_options.index("Buy Score") if "Buy Score" in sort_options else 0)
+with sort_col2:
+    sort_asc = st.radio("Order", ["↓ Descending", "↑ Ascending"], index=0)
+with filter_col:
+    all_sectors = ["All"] + sorted(display_df["Sector"].dropna().unique().tolist()) if "Sector" in display_df.columns else ["All"]
+    sector_filter = st.selectbox("Filter by Sector", all_sectors, index=0)
 
-# Top Picks section
+# Apply filter
+if sector_filter != "All" and "Sector" in display_df.columns:
+    filtered_df = display_df[display_df["Sector"] == sector_filter].copy()
+else:
+    filtered_df = display_df.copy()
+
+# Apply sort
+ascending = sort_asc == "↑ Ascending"
+if sort_by in filtered_df.columns:
+    filtered_df = filtered_df.sort_values(sort_by, ascending=ascending, na_position="last")
+
+# ---- COLOR HELPER ----
+def _cell_style(val, col):
+    """Return CSS style string for a cell value."""
+    if col == "Buy Score":
+        if val and val >= 80: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val and val >= 65: return "background:#2e8b2e;color:#fff"
+        elif val and val >= 50: return "background:#daa520;color:#000"
+        elif val and val >= 35: return "background:#cd853f;color:#000"
+        else: return "background:#b22222;color:#fff"
+    elif col == "Tech Score":
+        if val == 4: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val == 3: return "background:#2e8b2e;color:#fff"
+        elif val == 2: return "background:#daa520;color:#000"
+        elif val == 1: return "background:#cd853f;color:#000"
+        else: return "background:#b22222;color:#fff"
+    elif col == "Comm Score":
+        if val == 4: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val == 3: return "background:#2e8b2e;color:#fff"
+        elif val == 2: return "background:#daa520;color:#000"
+        else: return "background:#b22222;color:#fff"
+    elif col == "Exhaustion":
+        if val == "Extreme": return "background:#8b0000;color:#fff;font-weight:bold"
+        elif val == "High": return "background:#cd5c5c;color:#fff"
+        elif val == "Building": return "background:#f0e68c;color:#000"
+        else: return "background:#90ee90;color:#000"
+    elif col == "RSI(14)":
+        if val and val > 70: return "color:#ff6b6b;font-weight:bold"
+        elif val and val < 30: return "color:#69db7c;font-weight:bold"
+    elif col == "Est CAGR %":
+        if val and val > 20: return "color:#69db7c;font-weight:bold"
+        elif val and val > 0: return "color:#69db7c"
+        elif val and val < 0: return "color:#ff6b6b"
+    elif col == "Target Upside %":
+        if val and val > 30: return "color:#69db7c;font-weight:bold"
+        elif val and val > 15: return "color:#69db7c"
+        elif val and val < -10: return "color:#ff6b6b"
+    elif col == "Beta":
+        if val and val > 2.0: return "color:#ff6b6b;font-weight:bold"
+        elif val and val > 1.5: return "color:#ffa94d"
+        elif val and val < 0.8: return "color:#69db7c"
+    elif col in ("vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
+        if val and val > 0: return "color:#69db7c"
+        elif val and val < 0: return "color:#ff6b6b"
+    elif col == "Sector":
+        return "font-weight:600;white-space:nowrap"
+    return ""
+
+def _fmt(val, col):
+    """Format a value for display."""
+    if val is None or (isinstance(val, float) and val != val):
+        return "—"
+    if col in ("Price", "52W High", "52W Low"):
+        return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
+    if col in ("Trailing P/E", "Fwd PE", "PEG", "Beta", "RSI(14)"):
+        return f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
+    if col in ("Est CAGR %", "Target Upside %", "vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
+        return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
+    if col in ("Buy Score", "Tech Score", "Comm Score"):
+        return str(int(val)) if isinstance(val, (int, float)) else str(val)
+    if col == "Vol 20d" or col == "Vol 50d":
+        return f"{val:,.0f}" if isinstance(val, (int, float)) else str(val)
+    return str(val)
+
+# ---- CUSTOM HTML TABLE WITH STICKY COLUMNS ----
+if len(filtered_df) > 0:
+    cols = filtered_df.columns.tolist()
+    
+    # Build HTML table
+    html = """
+    <style>
+    .dash-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 8px;
+        border: 1px solid #333;
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    .dash-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 13px;
+        width: max-content;
+        min-width: 100%;
+    }
+    .dash-table thead th {
+        position: sticky;
+        top: 0;
+        background: #0e1117;
+        color: #fafafa;
+        font-weight: 600;
+        padding: 10px 12px;
+        border-bottom: 2px solid #333;
+        white-space: nowrap;
+        z-index: 10;
+        text-align: left;
+    }
+    .dash-table tbody td {
+        padding: 8px 12px;
+        border-bottom: 1px solid #262730;
+        white-space: nowrap;
+        background: #0e1117;
+        color: #fafafa;
+    }
+    .dash-table tbody tr:hover td {
+        background: #1a1d29;
+    }
+    /* Sticky first column (Sector) */
+    .dash-table thead th:first-child,
+    .dash-table tbody td:first-child {
+        position: sticky;
+        left: 0;
+        min-width: 130px;
+        max-width: 130px;
+        z-index: 20;
+        background: #0e1117;
+        border-right: 2px solid #333;
+    }
+    .dash-table thead th:first-child {
+        z-index: 30;
+        background: #0e1117;
+    }
+    /* Sticky second column (Symbol) */
+    .dash-table thead th:nth-child(2),
+    .dash-table tbody td:nth-child(2) {
+        position: sticky;
+        left: 130px;
+        min-width: 75px;
+        max-width: 75px;
+        z-index: 20;
+        background: #0e1117;
+        border-right: 2px solid #333;
+    }
+    .dash-table thead th:nth-child(2) {
+        z-index: 30;
+        background: #0e1117;
+    }
+    </style>
+    <div class="dash-table-wrap">
+    <table class="dash-table">
+    <thead>
+    <tr>
+    """
+    
+    for col in cols:
+        html += f"<th>{col}</th>"
+    html += "</tr></thead><tbody>"
+    
+    for _, row in filtered_df.iterrows():
+        html += "<tr>"
+        for col in cols:
+            val = row[col]
+            style = _cell_style(val, col)
+            text = _fmt(val, col)
+            html += f'<td style="{style}">{text}</td>'
+        html += "</tr>"
+    
+    html += "</tbody></table></div>"
+    
+    st.markdown(html, unsafe_allow_html=True)
+    st.caption(f"Showing {len(filtered_df)} of {len(display_df)} tickers")
+else:
+    st.info("No tickers match the selected filter.")
+
+# ---- TOP PICKS SECTION ----
 if "buy_score" in df.columns:
     st.subheader("🎯 Top Buy Picks")
-    top_picks = df.nlargest(5, "buy_score")[["symbol", "name", "buy_score", "technical_score", "commentary_score", "exhaustion_level", "price"]]
+    top_picks = df.nlargest(5, "buy_score")[["symbol", "name", "sector", "buy_score", "technical_score", "commentary_score", "exhaustion_level", "price"]]
     top_picks = top_picks.rename(columns={
         "symbol": "Symbol",
         "name": "Name",
+        "sector": "Sector",
         "buy_score": "Buy Score",
         "technical_score": "Tech",
         "commentary_score": "Comm",
         "exhaustion_level": "Exhaustion",
         "price": "Price",
     })
+    # Fill empty sectors
+    if "Sector" in top_picks.columns:
+        top_picks["Sector"] = top_picks["Sector"].fillna("Unknown").replace("", "Unknown")
     
     pick_cols = st.columns(min(5, len(top_picks)))
     for idx, (_, row) in enumerate(top_picks.iterrows()):
         with pick_cols[idx]:
             score = row["Buy Score"]
             color = "#1a5f1a" if score >= 80 else "#2e8b2e" if score >= 65 else "#daa520" if score >= 50 else "#cd853f"
+            sector_label = row.get("Sector", "")
+            sector_html = f'<p style="margin: 3px 0; font-size: 0.7em; opacity: 0.8;">{sector_label}</p>' if sector_label else ''
             st.markdown(f"""
             <div style="background-color: {color}; padding: 15px; border-radius: 10px; text-align: center; color: white;">
-                <h3 style="margin: 0; font-size: 1.2em;">{row['Symbol']}</h3>
+                <p style="margin: 0; font-size: 0.75em; opacity: 0.85; font-weight: 600;">{sector_label}</p>
+                <h3 style="margin: 2px 0; font-size: 1.2em;">{row['Symbol']}</h3>
                 <p style="margin: 5px 0; font-size: 0.85em; opacity: 0.9;">{row['Name'][:20]}</p>
                 <h2 style="margin: 0; font-size: 2em;">{score}</h2>
                 <p style="margin: 5px 0; font-size: 0.75em;">Tech {row['Tech']}/4 · Comm {row['Comm']}/4</p>
                 <p style="margin: 0; font-size: 0.75em;">{row['Exhaustion']}</p>
             </div>
             """, unsafe_allow_html=True)
-
-st.subheader("Portfolio Overview")
-st.dataframe(
-    display_df.style.apply(style_df, axis=None),
-    use_container_width=True,
-    hide_index=True,
-    height=min(50 + len(display_df) * 35, 600),
-)
 
 # Summary stats
 col1, col2, col3, col4, col5 = st.columns(5)
