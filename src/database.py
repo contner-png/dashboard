@@ -42,6 +42,7 @@ def init_db():
             exhaustion_level TEXT,
             technical_score INTEGER,
             commentary_score INTEGER,
+            buy_score INTEGER,
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (symbol) REFERENCES tickers(symbol)
         )

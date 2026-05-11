@@ -3,7 +3,7 @@ from typing import List
 from src.database import get_tickers, upsert_metrics, add_ticker
 from src.fetcher import fetch_ticker_data, get_company_name, get_sector
 from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd
-from src.scoring import calculate_technical_score, calculate_commentary_score
+from src.scoring import calculate_technical_score, calculate_commentary_score, calculate_buy_score
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,21 @@ def sync_ticker(symbol: str) -> bool:
     vs_200 = calc_price_vs_ma(history["Close"], 200)
     _, _, macd_signal = calc_macd(history["Close"])
 
+    # Composite buy score
+    buy_score = calculate_buy_score(
+        technical_score=tech_score,
+        commentary_score=comm_score,
+        exhaustion_level=exhaustion.get("exhaustion_level", "None"),
+        rsi=exhaustion.get("rsi_14"),
+        peg=info.get("pegRatio"),
+        trailing_pe=info.get("trailingPE"),
+        forward_pe=info.get("forwardPE"),
+        macd_signal=macd_signal,
+        price_vs_50ma=vs_50,
+        price_vs_200ma=vs_200,
+        volume_ratio=exhaustion.get("volume_ratio"),
+    )
+
     metrics = {
         "price": round(info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1], 2),
         "pe_trailing": info.get("trailingPE"),
@@ -50,6 +65,7 @@ def sync_ticker(symbol: str) -> bool:
         "exhaustion_level": exhaustion.get("exhaustion_level"),
         "technical_score": tech_score,
         "commentary_score": comm_score,
+        "buy_score": buy_score,
     }
 
     # Clean NaN values for SQLite
@@ -61,7 +77,7 @@ def sync_ticker(symbol: str) -> bool:
             clean_metrics[k] = v
 
     upsert_metrics(symbol, clean_metrics)
-    logger.info(f"Synced {symbol}: Tech={tech_score}, Comm={comm_score}, Exhaustion={exhaustion['exhaustion_level']}")
+    logger.info(f"Synced {symbol}: Buy={buy_score}, Tech={tech_score}, Comm={comm_score}, Exhaustion={exhaustion['exhaustion_level']}")
     return True
 
 

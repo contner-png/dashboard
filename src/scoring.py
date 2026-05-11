@@ -78,3 +78,119 @@ def calculate_commentary_score(info: Dict) -> int:
 
     # Minimum score is 1 (we always have some commentary)
     return max(1, score)
+
+
+def calculate_buy_score(
+    technical_score: int,
+    commentary_score: int,
+    exhaustion_level: str,
+    rsi: float,
+    peg: float,
+    trailing_pe: float,
+    forward_pe: float,
+    macd_signal: str,
+    price_vs_50ma: float,
+    price_vs_200ma: float,
+    volume_ratio: float,
+) -> int:
+    """
+    Composite Buy Score: 0-100
+    Combines all metrics into a single "best buy" score.
+
+    Breakdown:
+    - Technical Momentum: 0-25 pts
+    - Fundamental Quality: 0-25 pts
+    - Valuation Attractiveness: 0-20 pts
+    - Entry Timing / Exhaustion: 0-20 pts
+    - Risk / Momentum Balance: 0-10 pts
+    """
+    score = 0
+
+    # 1. Technical Momentum (0-25 pts)
+    # Technical score 0-4 mapped to 0-20 pts
+    tech_points = (technical_score / 4) * 20
+    # MACD bonus
+    if macd_signal in ("Bullish", "Bullish Crossover"):
+        tech_points += 5
+    score += min(25, tech_points)
+
+    # 2. Fundamental Quality (0-25 pts)
+    # Commentary score 1-4 mapped to 10-25 pts
+    comm_points = 10 + ((commentary_score - 1) / 3) * 15
+    score += min(25, comm_points)
+
+    # 3. Valuation Attractiveness (0-20 pts)
+    val_points = 0
+    # PEG ratio scoring
+    if peg and not np.isnan(peg):
+        if peg < 1:
+            val_points += 12
+        elif peg < 2:
+            val_points += 9
+        elif peg < 3:
+            val_points += 5
+        else:
+            val_points += 2
+    else:
+        val_points += 5  # neutral if no PEG data
+
+    # Forward PE discount vs Trailing PE
+    if forward_pe and trailing_pe and not np.isnan(forward_pe) and not np.isnan(trailing_pe):
+        pe_discount = (trailing_pe - forward_pe) / trailing_pe
+        if pe_discount > 0.30:
+            val_points += 8
+        elif pe_discount > 0.15:
+            val_points += 5
+        elif pe_discount > 0:
+            val_points += 3
+        else:
+            val_points += 1
+    else:
+        val_points += 3
+    score += min(20, val_points)
+
+    # 4. Entry Timing / Exhaustion (0-20 pts)
+    exhaustion_map = {
+        "None": 20,
+        "Building": 12,
+        "High": 5,
+        "Extreme": 0,
+    }
+    score += exhaustion_map.get(exhaustion_level, 10)
+
+    # 5. Risk / Momentum Balance (0-10 pts)
+    # RSI ideal entry zone: 40-60 (not oversold, not overbought)
+    if rsi and not np.isnan(rsi):
+        if 40 <= rsi <= 60:
+            rsi_points = 10
+        elif 30 <= rsi < 40 or 60 < rsi <= 70:
+            rsi_points = 6
+        elif 20 <= rsi < 30 or 70 < rsi <= 80:
+            rsi_points = 3
+        else:
+            rsi_points = 0
+    else:
+        rsi_points = 5
+
+    # Price vs MA penalty (if far extended, reduce score)
+    ma_penalty = 0
+    if price_vs_50ma and not np.isnan(price_vs_50ma):
+        if price_vs_50ma > 30:
+            ma_penalty += 3
+        elif price_vs_50ma > 20:
+            ma_penalty += 1
+    if price_vs_200ma and not np.isnan(price_vs_200ma):
+        if price_vs_200ma > 50:
+            ma_penalty += 2
+
+    # Volume confirmation bonus
+    vol_bonus = 0
+    if volume_ratio and not np.isnan(volume_ratio):
+        if volume_ratio > 1.1:
+            vol_bonus += 2
+        elif volume_ratio > 0.95:
+            vol_bonus += 1
+
+    score += max(0, min(10, rsi_points - ma_penalty + vol_bonus))
+
+    return int(round(score))

@@ -91,14 +91,15 @@ column_map = {
     "exhaustion_level": "Exhaustion",
     "technical_score": "Tech Score",
     "commentary_score": "Comm Score",
+    "buy_score": "Buy Score",
     "last_updated": "Updated",
 }
 
 display_df = df.rename(columns=column_map)
 
-# Reorder columns
+# Reorder columns with Buy Score first
 desired_cols = [
-    "Symbol", "Name", "Price", "PE (TTM)", "Fwd PE", "PEG",
+    "Symbol", "Name", "Buy Score", "Price", "PE (TTM)", "Fwd PE", "PEG",
     "RSI(14)", "Exhaustion", "Tech Score", "Comm Score",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
     "Vol 20d", "Vol 50d", "Updated"
@@ -107,10 +108,25 @@ desired_cols = [
 display_cols = [c for c in desired_cols if c in display_df.columns]
 display_df = display_df[display_cols]
 
+# Sort by buy score descending for display
+if "Buy Score" in display_df.columns:
+    display_df = display_df.sort_values("Buy Score", ascending=False, na_position="last")
+
 # Style function
 def style_df(df):
     def _style(val, col):
-        if col == "Tech Score":
+        if col == "Buy Score":
+            if val and val >= 80:
+                return "background-color: #1a5f1a; color: white; font-weight: bold"
+            elif val and val >= 65:
+                return "background-color: #2e8b2e; color: white"
+            elif val and val >= 50:
+                return "background-color: #daa520; color: black"
+            elif val and val >= 35:
+                return "background-color: #cd853f; color: black"
+            else:
+                return "background-color: #b22222; color: white"
+        elif col == "Tech Score":
             if val == 4:
                 return "background-color: #1a5f1a; color: white; font-weight: bold"
             elif val == 3:
@@ -156,6 +172,35 @@ def style_df(df):
         styled[col] = styled[col].apply(lambda x, c=col: _style(x, c))
     return styled
 
+# Top Picks section
+if "buy_score" in df.columns:
+    st.subheader("🎯 Top Buy Picks")
+    top_picks = df.nlargest(5, "buy_score")[["symbol", "name", "buy_score", "technical_score", "commentary_score", "exhaustion_level", "price"]]
+    top_picks = top_picks.rename(columns={
+        "symbol": "Symbol",
+        "name": "Name",
+        "buy_score": "Buy Score",
+        "technical_score": "Tech",
+        "commentary_score": "Comm",
+        "exhaustion_level": "Exhaustion",
+        "price": "Price",
+    })
+    
+    pick_cols = st.columns(min(5, len(top_picks)))
+    for idx, (_, row) in enumerate(top_picks.iterrows()):
+        with pick_cols[idx]:
+            score = row["Buy Score"]
+            color = "#1a5f1a" if score >= 80 else "#2e8b2e" if score >= 65 else "#daa520" if score >= 50 else "#cd853f"
+            st.markdown(f"""
+            <div style="background-color: {color}; padding: 15px; border-radius: 10px; text-align: center; color: white;">
+                <h3 style="margin: 0; font-size: 1.2em;">{row['Symbol']}</h3>
+                <p style="margin: 5px 0; font-size: 0.85em; opacity: 0.9;">{row['Name'][:20]}</p>
+                <h2 style="margin: 0; font-size: 2em;">{score}</h2>
+                <p style="margin: 5px 0; font-size: 0.75em;">Tech {row['Tech']}/4 · Comm {row['Comm']}/4</p>
+                <p style="margin: 0; font-size: 0.75em;">{row['Exhaustion']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
 st.subheader("Portfolio Overview")
 st.dataframe(
     display_df.style.apply(style_df, axis=None),
@@ -165,16 +210,19 @@ st.dataframe(
 )
 
 # Summary stats
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
     st.metric("Total Tickers", len(df))
 with col2:
+    avg_buy = df["buy_score"].mean() if "buy_score" in df.columns else 0
+    st.metric("Avg Buy Score", f"{avg_buy:.0f}/100")
+with col3:
     avg_tech = df["technical_score"].mean() if "technical_score" in df.columns else 0
     st.metric("Avg Tech Score", f"{avg_tech:.1f}/4")
-with col3:
+with col4:
     avg_comm = df["commentary_score"].mean() if "commentary_score" in df.columns else 0
     st.metric("Avg Comm Score", f"{avg_comm:.1f}/4")
-with col4:
+with col5:
     extreme = df[df["exhaustion_level"] == "Extreme"].shape[0] if "exhaustion_level" in df.columns else 0
     st.metric("Extreme Exhaustion", extreme)
 
@@ -267,11 +315,29 @@ if selected_symbol:
             st.metric("Exhaustion", row.get('exhaustion_level', 'N/A'))
 
         st.markdown("#### Scores")
-        scol1, scol2 = st.columns(2)
+        
+        # Big buy score at the top
+        buy = row.get('buy_score')
+        if buy is not None:
+            bcol = st.columns([1, 2, 1])[1]
+            with bcol:
+                score_color = "#1a5f1a" if buy >= 80 else "#2e8b2e" if buy >= 65 else "#daa520" if buy >= 50 else "#cd853f" if buy >= 35 else "#b22222"
+                st.markdown(f"""
+                <div style="background-color: {score_color}; padding: 20px; border-radius: 15px; text-align: center; color: white; margin-bottom: 20px;">
+                    <p style="margin: 0; font-size: 1em; opacity: 0.9;">Composite Buy Score</p>
+                    <h1 style="margin: 0; font-size: 3em;">{buy}</h1>
+                    <p style="margin: 0; font-size: 0.9em; opacity: 0.9;">out of 100</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        scol1, scol2, scol3 = st.columns(3)
         with scol1:
+            st.metric("Buy Score", f"{buy}/100" if buy is not None else "N/A")
+            st.progress(buy / 100 if buy is not None else 0)
+        with scol2:
             st.metric("Technical Score", f"{row.get('technical_score', 'N/A')}/4")
             st.progress(row.get('technical_score', 0) / 4 if row.get('technical_score') else 0)
-        with scol2:
+        with scol3:
             st.metric("Commentary Score", f"{row.get('commentary_score', 'N/A')}/4")
             st.progress(row.get('commentary_score', 0) / 4 if row.get('commentary_score') else 0)
 

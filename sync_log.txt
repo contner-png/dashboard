@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+    from src.sync import sync_ticker
+  File "/workspace/project/dashboard/src/sync.py", line 4, in <module>
+    from src.fetcher import fetch_ticker_data, get_company_name, get_sector
+  File "/workspace/project/dashboard/src/fetcher.py", line 1, in <module>
+    import yfinance as yf
+ModuleNotFoundError: No module named 'yfinance'
