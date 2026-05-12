@@ -100,6 +100,7 @@ _AI_BUCKETS = {
     "P9U.F": "Power / Infrastructure",
     "VICR": "Power / Infrastructure",
     "267260.KS": "Power / Infrastructure",
+    "ETN": "Power / Infrastructure",
     # Networking / Connectivity
     "NOK": "Networking / Connectivity",
     "FSLY": "Networking / Connectivity",
