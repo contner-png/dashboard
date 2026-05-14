@@ -50,11 +50,17 @@ def sync_ticker(symbol: str) -> bool:
             projected_cagr = round(fwd_pe / peg, 1)
         elif trail_pe and not (isinstance(trail_pe, float) and trail_pe != trail_pe):
             projected_cagr = round(trail_pe / peg, 1)
+        # Cap unrealistic market-implied growth
+        if projected_cagr and projected_cagr > 100:
+            projected_cagr = 100.0
     # Fallback: use earningsGrowth dampened (next-year growth is typically 2-3x sustainable)
     if projected_cagr is None:
         eg = info.get("earningsGrowth")
         if eg and not (isinstance(eg, float) and eg != eg):
             projected_cagr = round(eg * 100 / 3, 1)  # Roughly convert next-year to sustainable
+            # Cap unrealistic values from small-base earnings spikes (e.g., going from near-zero to positive)
+            if projected_cagr and projected_cagr > 100:
+                projected_cagr = 100.0
 
     # Compute target upside % and current price (needed for buy score)
     current_price = info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1]
