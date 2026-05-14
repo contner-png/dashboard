@@ -68,25 +68,46 @@ st.sidebar.subheader("🎯 My Holdings")
 all_symbols = get_tickers()
 current_holdings = get_holdings()
 
-selected_holdings = st.sidebar.multiselect(
-    "Select stocks you hold",
-    options=all_symbols,
-    default=current_holdings,
-    help="Tickers you mark here will get a 🎯 badge and can be filtered/sorted",
-)
+with st.sidebar.expander(f"Select Holdings ({len(current_holdings)} selected)", expanded=False):
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("✅ Select All", use_container_width=True):
+            for sym in all_symbols:
+                toggle_holding(sym, True)
+            st.rerun()
+    with col_b:
+        if st.button("❌ Clear All", use_container_width=True):
+            for sym in all_symbols:
+                toggle_holding(sym, False)
+            st.rerun()
 
-# Save holdings changes
-if set(selected_holdings) != set(current_holdings):
-    # Mark new ones
-    for sym in selected_holdings:
-        if sym not in current_holdings:
-            toggle_holding(sym, True)
-    # Unmark removed ones
-    for sym in current_holdings:
-        if sym not in selected_holdings:
-            toggle_holding(sym, False)
-    st.sidebar.success(f"Updated holdings: {len(selected_holdings)} tickers")
-    st.rerun()
+    st.markdown("---")
+    # Build a 3-column checkbox grid for rapid multi-select
+    cols_per_row = 3
+    selected_from_grid = []
+    for i in range(0, len(all_symbols), cols_per_row):
+        row_symbols = all_symbols[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for j, sym in enumerate(row_symbols):
+            with cols[j]:
+                is_checked = st.checkbox(
+                    sym,
+                    value=sym in current_holdings,
+                    key=f"hold_{sym}",
+                )
+                if is_checked:
+                    selected_from_grid.append(sym)
+
+    # Detect changes and save
+    if set(selected_from_grid) != set(current_holdings):
+        for sym in selected_from_grid:
+            if sym not in current_holdings:
+                toggle_holding(sym, True)
+        for sym in current_holdings:
+            if sym not in selected_from_grid:
+                toggle_holding(sym, False)
+        st.success(f"Updated: {len(selected_from_grid)} holdings")
+        st.rerun()
 
 # Main dashboard
 metrics = get_all_metrics()
