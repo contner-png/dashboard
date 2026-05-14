@@ -63,8 +63,8 @@ def sync_ticker(symbol: str) -> bool:
     if target_mean and current_price and current_price > 0:
         target_upside = round((target_mean - current_price) / current_price * 100, 1)
 
-    # New 5-pillar professional scoring
-    buy_score, pillars = calculate_buy_score_v2(
+    # New 5-pillar professional scoring with reality checks
+    buy_score, pillars, adjustments = calculate_buy_score_v2(
         info=info,
         history=history,
         exhaustion_level=exhaustion.get("exhaustion_level", "None"),
@@ -74,6 +74,9 @@ def sync_ticker(symbol: str) -> bool:
         volume_ratio=exhaustion.get("volume_ratio"),
         week_52_change=info.get("52WeekChange"),
         rsi=exhaustion.get("rsi_14"),
+        technical_score=tech_score,
+        commentary_score=comm_score,
+        target_upside=target_upside,
     )
     band = rating_band(buy_score)
 
@@ -108,6 +111,16 @@ def sync_ticker(symbol: str) -> bool:
         "score_profitability": pillars["profitability"],
         "score_momentum": pillars["momentum"],
         "score_risk": pillars["risk"],
+        "adj_technical": adjustments["technical_crosscheck"],
+        "adj_commentary": adjustments["commentary_crosscheck"],
+        "adj_target": adjustments["target_reality"],
+        "adj_surprise": adjustments["earnings_surprise"],
+        "adj_coverage": adjustments["coverage_quality"],
+        "adj_peg": adjustments["peg_premium"],
+        "adj_growth": adjustments["growth_trajectory"],
+        "adj_pe_traj": adjustments["pe_trajectory"],
+        "adj_exhaustion": adjustments["exhaustion_penalty"],
+        "description": info.get("longBusinessSummary", ""),
     }
 
     # Clean NaN values for SQLite
@@ -122,7 +135,8 @@ def sync_ticker(symbol: str) -> bool:
     logger.info(
         f"Synced {symbol}: Buy={buy_score} ({band}), "
         f"V={pillars['valuation']:.0f} G={pillars['growth']:.0f} P={pillars['profitability']:.0f} "
-        f"M={pillars['momentum']:.0f} R={pillars['risk']:.0f}"
+        f"M={pillars['momentum']:.0f} R={pillars['risk']:.0f} | "
+        f"adj={sum(adjustments.values()):+.0f}"
     )
     return True
 

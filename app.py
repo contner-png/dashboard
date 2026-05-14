@@ -98,23 +98,38 @@ column_map = {
     "commentary_score": "Comm Score",
     "buy_score": "Buy Score",
     "rating_band": "Rating",
-    "score_valuation": "Val",
-    "score_growth": "Grw",
-    "score_profitability": "Prof",
-    "score_momentum": "Mom",
+    "score_valuation": "Valuation",
+    "score_growth": "Growth",
+    "score_profitability": "Profit",
+    "score_momentum": "Momentum",
     "score_risk": "Risk",
+    "adj_technical": "Tech Δ",
+    "adj_commentary": "Comm Δ",
+    "adj_target": "Target Δ",
+    "adj_surprise": "Surprise Δ",
+    "adj_coverage": "Coverage Δ",
+    "adj_peg": "PEG Δ",
+    "adj_growth": "CAGR Δ",
+    "adj_pe_traj": "PE Trj Δ",
+    "adj_exhaustion": "Exhaust Δ",
     "last_updated": "Updated",
 }
 
 display_df = df.rename(columns=column_map)
 
-# Reorder columns: Sector first, then Symbol, then the rest
+# Reorder columns: scoring components first, then financial metrics
 desired_cols = [
     "Sector", "Symbol", "Name", "Rating", "Buy Score",
-    "Val", "Grw", "Prof", "Mom", "Risk",
+    # 5 Pillars
+    "Valuation", "Growth", "Profit", "Momentum", "Risk",
+    # Key Adjustment Deltas
+    "PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
+    # Legacy Scores
+    "Tech Score", "Comm Score",
+    # Core Financial Metrics
     "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
     "Target Upside %", "Beta", "52W High", "52W Low",
-    "RSI(14)", "Exhaustion", "Tech Score", "Comm Score",
+    "RSI(14)", "Exhaustion",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
     "Vol 20d", "Vol 50d", "Updated"
 ]
@@ -162,10 +177,10 @@ if sort_by in filtered_df.columns:
 def _cell_style(val, col):
     """Return CSS style string for a cell value."""
     if col == "Buy Score":
-        if val and val >= 70: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val and val >= 60: return "background:#2e8b2e;color:#fff"
+        if val and val >= 80: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val and val >= 65: return "background:#2e8b2e;color:#fff"
         elif val and val >= 45: return "background:#daa520;color:#000"
-        elif val and val >= 35: return "background:#cd853f;color:#000"
+        elif val and val >= 30: return "background:#cd853f;color:#000"
         else: return "background:#b22222;color:#fff"
     elif col == "Rating":
         if val == "Strong Buy": return "background:#1a5f1a;color:#fff;font-weight:bold"
@@ -173,11 +188,19 @@ def _cell_style(val, col):
         elif val == "Hold": return "background:#daa520;color:#000"
         elif val == "Sell": return "background:#cd853f;color:#000"
         elif val == "Strong Sell": return "background:#b22222;color:#fff"
-    elif col in ("Val", "Grw", "Prof", "Mom", "Risk"):
+    elif col in ("Valuation", "Growth", "Profit", "Momentum", "Risk"):
         if val and val >= 15: return "background:#1a5f1a;color:#fff;font-weight:bold"
         elif val and val >= 10: return "background:#2e8b2e;color:#fff"
         elif val and val >= 6: return "background:#daa520;color:#000"
         elif val and val >= 3: return "background:#cd853f;color:#000"
+        else: return "background:#b22222;color:#fff"
+    elif col in ("PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
+                  "Tech Δ", "Comm Δ", "Surprise Δ", "Coverage Δ"):
+        # Adjustment deltas: positive = green (good for score), negative = red
+        if val and val >= 3: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val and val > 0: return "background:#2e8b2e;color:#fff"
+        elif val == 0: return "background:#555;color:#fff"
+        elif val and val > -3: return "background:#cd853f;color:#000"
         else: return "background:#b22222;color:#fff"
     elif col == "Tech Score":
         if val == 4: return "background:#1a5f1a;color:#fff;font-weight:bold"
@@ -229,6 +252,11 @@ def _fmt(val, col):
         return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
     if col in ("Buy Score", "Tech Score", "Comm Score"):
         return str(int(val)) if isinstance(val, (int, float)) else str(val)
+    if col in ("Valuation", "Growth", "Profit", "Momentum", "Risk"):
+        return f"{val:.0f}" if isinstance(val, (int, float)) else str(val)
+    if col in ("PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
+                "Tech Δ", "Comm Δ", "Surprise Δ", "Coverage Δ"):
+        return f"{val:+.0f}" if isinstance(val, (int, float)) else str(val)
     if col == "Vol 20d" or col == "Vol 50d":
         return f"{val:,.0f}" if isinstance(val, (int, float)) else str(val)
     return str(val)
@@ -408,7 +436,7 @@ if "sector" in df.columns and "buy_score" in df.columns:
     for idx, (_, row) in enumerate(sector_stats.iterrows()):
         with sec_cols[idx % len(sec_cols)]:
             score = row["avg_buy"]
-            color = "#1a5f1a" if score >= 60 else "#2e8b2e" if score >= 50 else "#daa520" if score >= 40 else "#cd853f"
+            color = "#1a5f1a" if score >= 65 else "#2e8b2e" if score >= 50 else "#daa520" if score >= 40 else "#cd853f"
             st.markdown(f"""
             <div style="background-color: {color}; padding: 12px; border-radius: 8px; text-align: center; color: white; margin-bottom: 8px;">
                 <p style="margin: 0; font-size: 0.8em; opacity: 0.9; font-weight: 600;">{row['sector']}</p>
@@ -426,7 +454,7 @@ with col2:
     st.metric("Avg Buy Score", f"{avg_buy:.0f}/100")
 with col3:
     strong_buy = df[df["rating_band"] == "Strong Buy"].shape[0] if "rating_band" in df.columns else 0
-    st.metric("Strong Buys", strong_buy)
+    st.metric("Strong Buys (80+)", strong_buy)
 with col4:
     avg_prof = df["score_profitability"].mean() if "score_profitability" in df.columns else 0
     st.metric("Avg Profitability", f"{avg_prof:.1f}/20")
@@ -507,6 +535,13 @@ if selected_symbol:
 
         # Key metrics cards
         row = df[df["symbol"] == selected_symbol].iloc[0]
+
+        # Company description
+        desc = row.get('description', '')
+        if desc:
+            with st.expander("Company Description", expanded=False):
+                st.markdown(desc)
+
         st.markdown("#### Key Metrics")
         mcol1, mcol2, mcol3, mcol4, mcol5 = st.columns(5)
         with mcol1:
@@ -559,7 +594,7 @@ if selected_symbol:
         if buy is not None:
             bcol = st.columns([1, 2, 1])[1]
             with bcol:
-                score_color = "#1a5f1a" if buy >= 70 else "#2e8b2e" if buy >= 60 else "#daa520" if buy >= 45 else "#cd853f" if buy >= 35 else "#b22222"
+                score_color = "#1a5f1a" if buy >= 80 else "#2e8b2e" if buy >= 65 else "#daa520" if buy >= 45 else "#cd853f" if buy >= 30 else "#b22222"
                 st.markdown(f"""
                 <div style="background-color: {score_color}; padding: 20px; border-radius: 15px; text-align: center; color: white; margin-bottom: 20px;">
                     <p style="margin: 0; font-size: 1em; opacity: 0.9;">Composite Buy Score</p>
@@ -583,6 +618,34 @@ if selected_symbol:
                 pv = row.get(key, 0) or 0
                 st.metric(label, f"{pv:.0f}/20")
                 st.progress(pv / 20)
+
+        # Adjustment Deltas
+        st.markdown("**Reality-Check Adjustments**")
+        adj_cols = st.columns(5)
+        adj_map = [
+            ("PEG Δ", "adj_peg"),
+            ("CAGR Δ", "adj_growth"),
+            ("PE Trj Δ", "adj_pe_traj"),
+            ("Exhaust Δ", "adj_exhaustion"),
+            ("Target Δ", "adj_target"),
+        ]
+        for acol, (label, key) in zip(adj_cols, adj_map):
+            with acol:
+                av = row.get(key, 0) or 0
+                color = "#1a5f1a" if av > 0 else "#b22222" if av < 0 else "#555"
+                st.metric(label, f"{av:+.0f}")
+
+        adj_cols2 = st.columns(5)
+        adj_map2 = [
+            ("Tech Δ", "adj_technical"),
+            ("Comm Δ", "adj_commentary"),
+            ("Surprise Δ", "adj_surprise"),
+            ("Coverage Δ", "adj_coverage"),
+        ]
+        for acol, (label, key) in zip(adj_cols2, adj_map2):
+            with acol:
+                av = row.get(key, 0) or 0
+                st.metric(label, f"{av:+.0f}")
 
         st.markdown("---")
         st.markdown("**Legacy Scores** (for reference)")

@@ -483,6 +483,189 @@ def calculate_commentary_score(info: Dict) -> int:
 # NEW COMPOSITE BUY SCORE
 # =============================================================================
 
+def _reality_check_adjustments(
+    base_score: float,
+    technical_score: int,
+    commentary_score: int,
+    target_upside: float,
+    info: Dict,
+    exhaustion_level: str,
+) -> Tuple[float, Dict[str, float]]:
+    """
+    Apply cross-check adjustments to the 5-pillar base score.
+    These catch cases where fundamentals look great but the market disagrees,
+    or where technicals/commentary provide confirming/contradicting signals.
+    """
+    adjustments = {}
+
+    # 1. Technical Score cross-check (-4 to +4 pts)
+    # High technical score = confirming signal that the chart supports fundamentals
+    tech_adj = 0.0
+    if technical_score == 4:
+        tech_adj = 4
+    elif technical_score == 3:
+        tech_adj = 2
+    elif technical_score == 2:
+        tech_adj = 0
+    elif technical_score == 1:
+        tech_adj = -2
+    else:
+        tech_adj = -4
+    adjustments["technical_crosscheck"] = tech_adj
+
+    # 2. Commentary Score cross-check (-3 to +3 pts)
+    # High commentary = fundamentals confirmed by analyst consensus
+    comm_adj = 0.0
+    if commentary_score == 4:
+        comm_adj = 3
+    elif commentary_score == 3:
+        comm_adj = 1
+    elif commentary_score == 2:
+        comm_adj = 0
+    elif commentary_score == 1:
+        comm_adj = -2
+    else:
+        comm_adj = -3
+    adjustments["commentary_crosscheck"] = comm_adj
+
+    # 3. Target Upside Reality Check (-6 to +4 pts)
+    # If analysts collectively see negative upside, the market is saying
+    # "fundamentals are priced in" regardless of how good they look
+    target_adj = 0.0
+    if _has(target_upside):
+        if target_upside > 50:
+            target_adj = 4  # analysts see huge upside = strong confirm
+        elif target_upside > 30:
+            target_adj = 2
+        elif target_upside > 15:
+            target_adj = 1
+        elif target_upside > 5:
+            target_adj = 0
+        elif target_upside > -5:
+            target_adj = -1  # fairly priced, slightly overvalued
+        elif target_upside > -15:
+            target_adj = -3  # analysts think it's overvalued
+        else:
+            target_adj = -6  # analysts strongly think it's overvalued
+    else:
+        target_adj = 0  # no target data = neutral
+    adjustments["target_reality"] = target_adj
+
+    # 4. Earnings Surprise Momentum (-2 to +2 pts)
+    # Earnings growth accelerating vs quarterly = momentum in fundamentals
+    eqg = info.get("earningsQuarterlyGrowth")
+    eg = info.get("earningsGrowth")
+    surprise_adj = 0.0
+    if _has(eqg) and _has(eg) and eg > 0:
+        surprise_ratio = eqg / eg
+        if surprise_ratio > 1.5:
+            surprise_adj = 2  # quarterly earnings accelerating strongly
+        elif surprise_ratio > 1.0:
+            surprise_adj = 1  # modest acceleration
+        elif surprise_ratio < 0.5:
+            surprise_adj = -2  # quarterly decelerating vs annual
+        elif surprise_ratio < 0.8:
+            surprise_adj = -1
+    adjustments["earnings_surprise"] = surprise_adj
+
+    # 5. PEG Premium Bonus (-3 to +5 pts)
+    # Best-in-class PEG (< 0.5) gets a direct boost regardless of sector
+    peg = info.get("pegRatio")
+    peg_adj = 0.0
+    if _has(peg) and peg > 0:
+        if peg < 0.5:
+            peg_adj = 5  # exceptional value
+        elif peg < 0.8:
+            peg_adj = 3
+        elif peg < 1.0:
+            peg_adj = 1
+        elif peg > 3.0:
+            peg_adj = -3  # expensive even for growth
+        elif peg > 2.0:
+            peg_adj = -1
+    adjustments["peg_premium"] = peg_adj
+
+    # 6. Expected CAGR / Growth Trajectory (-3 to +5 pts)
+    # High projected growth with reasonable PE = compounding machine
+    earnings_growth = info.get("earningsGrowth")
+    fwd_pe = info.get("forwardPE")
+    cagr_adj = 0.0
+    if _has(earnings_growth):
+        eg_pct = earnings_growth * 100
+        if eg_pct > 50:
+            cagr_adj = 5  # hypergrowth
+        elif eg_pct > 30:
+            cagr_adj = 3
+        elif eg_pct > 15:
+            cagr_adj = 1
+        elif eg_pct < 0:
+            cagr_adj = -3  # earnings declining
+        elif eg_pct < 5:
+            cagr_adj = -1  # stagnant
+    # Also check if proper PEG (FwdPE / earningsGrowth) is attractive
+    if _has(fwd_pe) and _has(earnings_growth) and earnings_growth > 0:
+        proper_peg = fwd_pe / (earnings_growth * 100)
+        if proper_peg < 0.8:
+            cagr_adj += 2  # growth is extremely cheap
+        elif proper_peg < 1.2:
+            cagr_adj += 1
+    adjustments["growth_trajectory"] = cagr_adj
+
+    # 7. Forward vs Trailing PE Trajectory (-3 to +5 pts)
+    # Big discount = earnings inflection, small or negative = PE expansion risk
+    trail_pe = info.get("trailingPE")
+    pe_traj_adj = 0.0
+    if _has(fwd_pe) and _has(trail_pe) and trail_pe > 0:
+        discount = (trail_pe - fwd_pe) / trail_pe
+        if discount > 0.50:
+            pe_traj_adj = 5  # massive earnings inflection expected
+        elif discount > 0.30:
+            pe_traj_adj = 3
+        elif discount > 0.15:
+            pe_traj_adj = 1
+        elif discount < -0.10:
+            pe_traj_adj = -3  # PE expanding = getting more expensive
+        elif discount < 0:
+            pe_traj_adj = -1
+    elif _has(fwd_pe) and not _has(trail_pe):
+        # Only forward PE available = analyst-estimated, slight trust penalty
+        pe_traj_adj = 0
+    adjustments["pe_trajectory"] = pe_traj_adj
+
+    # 8. Exhaustion Penalty (-0 to -8 pts)
+    # Direct penalty for price exhaustion regardless of other factors
+    exhaustion_adj = 0.0
+    if exhaustion_level == "Extreme":
+        exhaustion_adj = -8
+    elif exhaustion_level == "High":
+        exhaustion_adj = -4
+    elif exhaustion_level == "Building":
+        exhaustion_adj = -1
+    else:
+        exhaustion_adj = 1  # reward for no exhaustion
+    adjustments["exhaustion_penalty"] = exhaustion_adj
+
+    # 9. Analyst Consensus Strength (-2 to +2 pts)
+    # Number of analysts covering = confidence in data quality
+    num_analysts = info.get("numberOfAnalystOpinions")
+    coverage_adj = 0.0
+    if _has(num_analysts):
+        if num_analysts >= 30:
+            coverage_adj = 2  # well-covered, reliable consensus
+        elif num_analysts >= 15:
+            coverage_adj = 1
+        elif num_analysts >= 5:
+            coverage_adj = 0
+        else:
+            coverage_adj = -1  # thin coverage, targets less reliable
+    else:
+        coverage_adj = -1  # no analyst data = penalty for uncertainty
+    adjustments["coverage_quality"] = coverage_adj
+
+    total_adj = sum(adjustments.values())
+    return total_adj, adjustments
+
+
 def calculate_buy_score_v2(
     info: Dict,
     history: Dict,
@@ -493,14 +676,19 @@ def calculate_buy_score_v2(
     volume_ratio: float,
     week_52_change: float,
     rsi: float,
-) -> Tuple[int, Dict[str, float]]:
+    technical_score: int = 0,
+    commentary_score: int = 0,
+    target_upside: float = None,
+) -> Tuple[int, Dict[str, float], Dict[str, float]]:
     """
-    Professional 5-pillar composite Buy Score (0-100).
+    Professional 5-pillar composite Buy Score (0-100) with reality checks.
 
     Returns:
-        (buy_score, pillar_scores)
+        (buy_score, pillar_scores, adjustments)
         pillar_scores = {"valuation": x, "growth": x, "profitability": x,
                          "momentum": x, "risk": x}
+        adjustments = {"technical_crosscheck": x, "commentary_crosscheck": x,
+                       "target_reality": x, "earnings_surprise": x, "coverage_quality": x}
     """
     val = score_valuation(info)
     growth = score_growth(info)
@@ -515,7 +703,14 @@ def calculate_buy_score_v2(
         info.get("currentPrice") or info.get("regularMarketPrice"),
     )
 
-    total = val + growth + prof + mom + risk
+    base = val + growth + prof + mom + risk
+
+    # Apply reality-check adjustments
+    adj_total, adjustments = _reality_check_adjustments(
+        base, technical_score, commentary_score, target_upside, info, exhaustion_level
+    )
+
+    total = base + adj_total
     total = _clip(total, 0, 100)
 
     pillars = {
@@ -526,7 +721,10 @@ def calculate_buy_score_v2(
         "risk": round(risk, 1),
     }
 
-    return int(round(total)), pillars
+    # Store adjustment values rounded
+    adj_display = {k: round(v, 1) for k, v in adjustments.items()}
+
+    return int(round(total)), pillars, adj_display
 
 
 # Legacy wrapper for backward compatibility
@@ -575,9 +773,19 @@ def calculate_buy_score(
         "fiftyTwoWeekLow": week_52_low,
     }
     history = {"Close": None, "Volume": None}
-    score, _ = calculate_buy_score_v2(
-        info, history, exhaustion_level, price_vs_50ma, price_vs_200ma,
-        macd_signal, volume_ratio, None, rsi,
+    score, _, _ = calculate_buy_score_v2(
+        info=info,
+        history=history,
+        exhaustion_level=exhaustion_level,
+        price_vs_50ma=price_vs_50ma,
+        price_vs_200ma=price_vs_200ma,
+        macd_signal=macd_signal,
+        volume_ratio=volume_ratio,
+        week_52_change=None,
+        rsi=rsi,
+        technical_score=technical_score,
+        commentary_score=commentary_score,
+        target_upside=target_upside,
     )
     return score
 
@@ -585,15 +793,15 @@ def calculate_buy_score(
 def rating_band(score: int) -> str:
     """
     Map Buy Score to discrete rating band.
-    Calibrated to the portfolio's actual score distribution:
+    Calibrated for the enhanced scoring range (13-96):
     """
-    if score >= 70:
+    if score >= 80:
         return "Strong Buy"
-    elif score >= 60:
+    elif score >= 65:
         return "Buy"
     elif score >= 45:
         return "Hold"
-    elif score >= 35:
+    elif score >= 30:
         return "Sell"
     else:
         return "Strong Sell"
