@@ -3,7 +3,12 @@ from typing import List
 from src.database import get_tickers, upsert_metrics, add_ticker
 from src.fetcher import fetch_ticker_data, get_company_name, get_sector
 from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd
-from src.scoring import calculate_technical_score, calculate_commentary_score, calculate_buy_score
+from src.scoring import (
+    calculate_technical_score,
+    calculate_commentary_score,
+    calculate_buy_score_v2,
+    rating_band,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,26 +63,19 @@ def sync_ticker(symbol: str) -> bool:
     if target_mean and current_price and current_price > 0:
         target_upside = round((target_mean - current_price) / current_price * 100, 1)
 
-    # Composite buy score
-    buy_score = calculate_buy_score(
-        technical_score=tech_score,
-        commentary_score=comm_score,
+    # New 5-pillar professional scoring
+    buy_score, pillars = calculate_buy_score_v2(
+        info=info,
+        history=history,
         exhaustion_level=exhaustion.get("exhaustion_level", "None"),
-        rsi=exhaustion.get("rsi_14"),
-        peg=info.get("pegRatio"),
-        trailing_pe=info.get("trailingPE"),
-        forward_pe=info.get("forwardPE"),
-        est_growth=projected_cagr,
-        beta=info.get("beta"),
-        target_upside=target_upside,
-        week_52_high=info.get("fiftyTwoWeekHigh"),
-        week_52_low=info.get("fiftyTwoWeekLow"),
-        current_price=current_price,
-        macd_signal=macd_signal,
         price_vs_50ma=vs_50,
         price_vs_200ma=vs_200,
+        macd_signal=macd_signal,
         volume_ratio=exhaustion.get("volume_ratio"),
+        week_52_change=info.get("52WeekChange"),
+        rsi=exhaustion.get("rsi_14"),
     )
+    band = rating_band(buy_score)
 
     metrics = {
         "price": round(current_price, 2),
@@ -104,6 +102,12 @@ def sync_ticker(symbol: str) -> bool:
         "technical_score": tech_score,
         "commentary_score": comm_score,
         "buy_score": buy_score,
+        "rating_band": band,
+        "score_valuation": pillars["valuation"],
+        "score_growth": pillars["growth"],
+        "score_profitability": pillars["profitability"],
+        "score_momentum": pillars["momentum"],
+        "score_risk": pillars["risk"],
     }
 
     # Clean NaN values for SQLite
@@ -115,7 +119,11 @@ def sync_ticker(symbol: str) -> bool:
             clean_metrics[k] = v
 
     upsert_metrics(symbol, clean_metrics)
-    logger.info(f"Synced {symbol}: Buy={buy_score}, Tech={tech_score}, Comm={comm_score}, Exhaustion={exhaustion['exhaustion_level']}")
+    logger.info(
+        f"Synced {symbol}: Buy={buy_score} ({band}), "
+        f"V={pillars['valuation']:.0f} G={pillars['growth']:.0f} P={pillars['profitability']:.0f} "
+        f"M={pillars['momentum']:.0f} R={pillars['risk']:.0f}"
+    )
     return True
 
 

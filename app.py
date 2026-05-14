@@ -97,6 +97,12 @@ column_map = {
     "technical_score": "Tech Score",
     "commentary_score": "Comm Score",
     "buy_score": "Buy Score",
+    "rating_band": "Rating",
+    "score_valuation": "Val",
+    "score_growth": "Grw",
+    "score_profitability": "Prof",
+    "score_momentum": "Mom",
+    "score_risk": "Risk",
     "last_updated": "Updated",
 }
 
@@ -104,7 +110,9 @@ display_df = df.rename(columns=column_map)
 
 # Reorder columns: Sector first, then Symbol, then the rest
 desired_cols = [
-    "Sector", "Symbol", "Name", "Buy Score", "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
+    "Sector", "Symbol", "Name", "Rating", "Buy Score",
+    "Val", "Grw", "Prof", "Mom", "Risk",
+    "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
     "Target Upside %", "Beta", "52W High", "52W Low",
     "RSI(14)", "Exhaustion", "Tech Score", "Comm Score",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
@@ -131,11 +139,19 @@ with filter_col:
     all_sectors = ["All"] + sorted(display_df["Sector"].dropna().unique().tolist()) if "Sector" in display_df.columns else ["All"]
     sector_filter = st.selectbox("Filter by Sector", all_sectors, index=0)
 
-# Apply filter
-if sector_filter != "All" and "Sector" in display_df.columns:
-    filtered_df = display_df[display_df["Sector"] == sector_filter].copy()
-else:
-    filtered_df = display_df.copy()
+# Rating band filter
+rating_filter = "All"
+if "Rating" in display_df.columns:
+    rating_col = st.columns([1, 1])[1] if 'rating_col' not in locals() else None
+    all_ratings = ["All"] + ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
+    rating_filter = st.selectbox("Filter by Rating", all_ratings, index=0, key="rating_filter")
+
+# Apply filters
+filtered_df = display_df.copy()
+if sector_filter != "All" and "Sector" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Sector"] == sector_filter].copy()
+if rating_filter != "All" and "Rating" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Rating"] == rating_filter].copy()
 
 # Apply sort
 ascending = sort_asc == "↑ Ascending"
@@ -146,10 +162,22 @@ if sort_by in filtered_df.columns:
 def _cell_style(val, col):
     """Return CSS style string for a cell value."""
     if col == "Buy Score":
-        if val and val >= 80: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val and val >= 65: return "background:#2e8b2e;color:#fff"
-        elif val and val >= 50: return "background:#daa520;color:#000"
+        if val and val >= 70: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val and val >= 60: return "background:#2e8b2e;color:#fff"
+        elif val and val >= 45: return "background:#daa520;color:#000"
         elif val and val >= 35: return "background:#cd853f;color:#000"
+        else: return "background:#b22222;color:#fff"
+    elif col == "Rating":
+        if val == "Strong Buy": return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val == "Buy": return "background:#2e8b2e;color:#fff"
+        elif val == "Hold": return "background:#daa520;color:#000"
+        elif val == "Sell": return "background:#cd853f;color:#000"
+        elif val == "Strong Sell": return "background:#b22222;color:#fff"
+    elif col in ("Val", "Grw", "Prof", "Mom", "Risk"):
+        if val and val >= 15: return "background:#1a5f1a;color:#fff;font-weight:bold"
+        elif val and val >= 10: return "background:#2e8b2e;color:#fff"
+        elif val and val >= 6: return "background:#daa520;color:#000"
+        elif val and val >= 3: return "background:#cd853f;color:#000"
         else: return "background:#b22222;color:#fff"
     elif col == "Tech Score":
         if val == 4: return "background:#1a5f1a;color:#fff;font-weight:bold"
@@ -380,7 +408,7 @@ if "sector" in df.columns and "buy_score" in df.columns:
     for idx, (_, row) in enumerate(sector_stats.iterrows()):
         with sec_cols[idx % len(sec_cols)]:
             score = row["avg_buy"]
-            color = "#1a5f1a" if score >= 65 else "#2e8b2e" if score >= 50 else "#daa520" if score >= 35 else "#cd853f"
+            color = "#1a5f1a" if score >= 60 else "#2e8b2e" if score >= 50 else "#daa520" if score >= 40 else "#cd853f"
             st.markdown(f"""
             <div style="background-color: {color}; padding: 12px; border-radius: 8px; text-align: center; color: white; margin-bottom: 8px;">
                 <p style="margin: 0; font-size: 0.8em; opacity: 0.9; font-weight: 600;">{row['sector']}</p>
@@ -397,11 +425,11 @@ with col2:
     avg_buy = df["buy_score"].mean() if "buy_score" in df.columns else 0
     st.metric("Avg Buy Score", f"{avg_buy:.0f}/100")
 with col3:
-    avg_tech = df["technical_score"].mean() if "technical_score" in df.columns else 0
-    st.metric("Avg Tech Score", f"{avg_tech:.1f}/4")
+    strong_buy = df[df["rating_band"] == "Strong Buy"].shape[0] if "rating_band" in df.columns else 0
+    st.metric("Strong Buys", strong_buy)
 with col4:
-    avg_comm = df["commentary_score"].mean() if "commentary_score" in df.columns else 0
-    st.metric("Avg Comm Score", f"{avg_comm:.1f}/4")
+    avg_prof = df["score_profitability"].mean() if "score_profitability" in df.columns else 0
+    st.metric("Avg Profitability", f"{avg_prof:.1f}/20")
 with col5:
     extreme = df[df["exhaustion_level"] == "Extreme"].shape[0] if "exhaustion_level" in df.columns else 0
     st.metric("Extreme Exhaustion", extreme)
@@ -531,7 +559,7 @@ if selected_symbol:
         if buy is not None:
             bcol = st.columns([1, 2, 1])[1]
             with bcol:
-                score_color = "#1a5f1a" if buy >= 80 else "#2e8b2e" if buy >= 65 else "#daa520" if buy >= 50 else "#cd853f" if buy >= 35 else "#b22222"
+                score_color = "#1a5f1a" if buy >= 70 else "#2e8b2e" if buy >= 60 else "#daa520" if buy >= 45 else "#cd853f" if buy >= 35 else "#b22222"
                 st.markdown(f"""
                 <div style="background-color: {score_color}; padding: 20px; border-radius: 15px; text-align: center; color: white; margin-bottom: 20px;">
                     <p style="margin: 0; font-size: 1em; opacity: 0.9;">Composite Buy Score</p>
@@ -540,6 +568,24 @@ if selected_symbol:
                 </div>
                 """, unsafe_allow_html=True)
         
+        # 5-Pillar breakdown
+        st.markdown("**5-Pillar Breakdown** (Valuation · Growth · Profitability · Momentum · Risk)")
+        pcols = st.columns(5)
+        pillar_map = [
+            ("Valuation", "score_valuation"),
+            ("Growth", "score_growth"),
+            ("Profitability", "score_profitability"),
+            ("Momentum", "score_momentum"),
+            ("Risk", "score_risk"),
+        ]
+        for pcol, (label, key) in zip(pcols, pillar_map):
+            with pcol:
+                pv = row.get(key, 0) or 0
+                st.metric(label, f"{pv:.0f}/20")
+                st.progress(pv / 20)
+
+        st.markdown("---")
+        st.markdown("**Legacy Scores** (for reference)")
         scol1, scol2, scol3 = st.columns(3)
         with scol1:
             st.metric("Buy Score", f"{buy}/100" if buy is not None else "N/A")
