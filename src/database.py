@@ -137,9 +137,10 @@ def get_all_metrics() -> List[Dict]:
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT t.symbol, t.name, t.sector, m.*
+        SELECT t.symbol, t.name, t.sector, m.*, COALESCE(h.is_held, 0) as is_held
         FROM tickers t
         LEFT JOIN metrics m ON t.symbol = m.symbol
+        LEFT JOIN holdings h ON t.symbol = h.symbol
         ORDER BY t.symbol
         """
     )
@@ -147,3 +148,49 @@ def get_all_metrics() -> List[Dict]:
     cols = [desc[0] for desc in cursor.description]
     conn.close()
     return [dict(zip(cols, row)) for row in rows]
+
+
+def init_holdings():
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS holdings (
+            symbol TEXT PRIMARY KEY,
+            is_held INTEGER DEFAULT 0,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (symbol) REFERENCES tickers(symbol)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def toggle_holding(symbol: str, is_held: bool):
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR REPLACE INTO holdings (symbol, is_held) VALUES (?, ?)",
+        (symbol.upper(), 1 if is_held else 0),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_holdings() -> List[str]:
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT symbol FROM holdings WHERE is_held = 1 ORDER BY symbol")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def is_held(symbol: str) -> bool:
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT is_held FROM holdings WHERE symbol = ?", (symbol.upper(),)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])

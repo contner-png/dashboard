@@ -39,28 +39,41 @@ def sync_ticker(symbol: str) -> bool:
     vs_200 = calc_price_vs_ma(history["Close"], 200)
     _, _, macd_signal = calc_macd(history["Close"])
 
-    # Estimated CAGR: derive from PEG ratio (PEG = Forward PE / Growth)
-    # This gives the market-implied sustainable long-term growth rate
+    # Analyst-estimated growth: use earningsGrowth (analyst consensus) directly.
+    # This is Yahoo Finance's compiled analyst estimate for next-year earnings growth.
+    # We cap extreme outliers caused by small-base effects (e.g., near-zero to positive earnings).
     projected_cagr = None
-    peg = info.get("pegRatio")
-    fwd_pe = info.get("forwardPE")
-    trail_pe = info.get("trailingPE")
-    if peg and peg > 0:
-        if fwd_pe and not (isinstance(fwd_pe, float) and fwd_pe != fwd_pe):
-            projected_cagr = round(fwd_pe / peg, 1)
-        elif trail_pe and not (isinstance(trail_pe, float) and trail_pe != trail_pe):
-            projected_cagr = round(trail_pe / peg, 1)
-        # Cap unrealistic market-implied growth
+    eg = info.get("earningsGrowth")
+    if eg and not (isinstance(eg, float) and eg != eg):
+        projected_cagr = round(eg * 100, 1)
+        # Cap unrealistic small-base spikes (e.g., VICR at 701% from tiny earnings base)
         if projected_cagr and projected_cagr > 100:
             projected_cagr = 100.0
-    # Fallback: use earningsGrowth dampened (next-year growth is typically 2-3x sustainable)
+        if projected_cagr and projected_cagr < -50:
+            projected_cagr = -50.0
+    # Fallback 1: revenueGrowth (also analyst consensus)
     if projected_cagr is None:
-        eg = info.get("earningsGrowth")
-        if eg and not (isinstance(eg, float) and eg != eg):
-            projected_cagr = round(eg * 100 / 3, 1)  # Roughly convert next-year to sustainable
-            # Cap unrealistic values from small-base earnings spikes (e.g., going from near-zero to positive)
+        rg = info.get("revenueGrowth")
+        if rg and not (isinstance(rg, float) and rg != rg):
+            projected_cagr = round(rg * 100, 1)
             if projected_cagr and projected_cagr > 100:
                 projected_cagr = 100.0
+            if projected_cagr and projected_cagr < -50:
+                projected_cagr = -50.0
+    # Fallback 2: PEG-implied growth (market-implied sustainable rate)
+    if projected_cagr is None:
+        peg = info.get("pegRatio")
+        fwd_pe = info.get("forwardPE")
+        trail_pe = info.get("trailingPE")
+        if peg and peg > 0:
+            if fwd_pe and not (isinstance(fwd_pe, float) and fwd_pe != fwd_pe):
+                projected_cagr = round(fwd_pe / peg, 1)
+            elif trail_pe and not (isinstance(trail_pe, float) and trail_pe != trail_pe):
+                projected_cagr = round(trail_pe / peg, 1)
+            if projected_cagr and projected_cagr > 100:
+                projected_cagr = 100.0
+            if projected_cagr and projected_cagr < -50:
+                projected_cagr = -50.0
 
     # Compute target upside % and current price (needed for buy score)
     current_price = info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1]

@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from src.database import init_db, add_ticker, remove_ticker, get_tickers, get_all_metrics
+from src.database import init_db, add_ticker, remove_ticker, get_tickers, get_all_metrics, init_holdings, toggle_holding, get_holdings, is_held
 from src.sync import sync_ticker, sync_all
 from src.fetcher import fetch_ticker_data
 
@@ -11,6 +11,7 @@ st.set_page_config(page_title="Stock Dashboard", page_icon="📈", layout="wide"
 
 # Initialize database
 init_db()
+init_holdings()
 
 st.title("📈 Stock Dashboard")
 st.markdown("Track your stocks with auto-syncing metrics, exhaustion signals, and scoring.")
@@ -61,6 +62,32 @@ if st.sidebar.button("Remove") and to_remove:
     st.sidebar.success(f"Removed {to_remove}")
     st.rerun()
 
+# Portfolio / Holdings
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎯 My Holdings")
+all_symbols = get_tickers()
+current_holdings = get_holdings()
+
+selected_holdings = st.sidebar.multiselect(
+    "Select stocks you hold",
+    options=all_symbols,
+    default=current_holdings,
+    help="Tickers you mark here will get a 🎯 badge and can be filtered/sorted",
+)
+
+# Save holdings changes
+if set(selected_holdings) != set(current_holdings):
+    # Mark new ones
+    for sym in selected_holdings:
+        if sym not in current_holdings:
+            toggle_holding(sym, True)
+    # Unmark removed ones
+    for sym in current_holdings:
+        if sym not in selected_holdings:
+            toggle_holding(sym, False)
+    st.sidebar.success(f"Updated holdings: {len(selected_holdings)} tickers")
+    st.rerun()
+
 # Main dashboard
 metrics = get_all_metrics()
 
@@ -80,7 +107,7 @@ column_map = {
     "pe_trailing": "Trailing P/E",
     "pe_forward": "Fwd PE",
     "peg_ratio": "PEG",
-    "projected_cagr": "Est CAGR %",
+    "projected_cagr": "Analyst Est Growth %",
     "beta": "Beta",
     "target_upside": "Target Upside %",
     "week_52_high": "52W High",
@@ -121,7 +148,7 @@ display_df = df.rename(columns=column_map)
 desired_cols = [
     "Sector", "Symbol", "Name",
     # Key headline metrics
-    "Buy Score", "Est CAGR %", "Target Upside %", "Rating",
+    "Buy Score", "Analyst Est Growth %", "Target Upside %", "Rating",
     # 5 Pillars
     "Valuation", "Growth", "Profit", "Momentum", "Risk",
     # Key Adjustment Deltas
@@ -136,8 +163,11 @@ desired_cols = [
     "Vol 20d", "Vol 50d", "Updated"
 ]
 
-display_cols = [c for c in desired_cols if c in display_df.columns]
-display_df = display_df[display_cols]
+# Preserve is_held for filtering/sorting even though we don't display it as a column
+preserve_cols = [c for c in desired_cols if c in display_df.columns]
+if "is_held" in display_df.columns and "is_held" not in preserve_cols:
+    preserve_cols.append("is_held")
+display_df = display_df[preserve_cols]
 
 # Fill empty sectors
 if "Sector" in display_df.columns:
@@ -145,6 +175,9 @@ if "Sector" in display_df.columns:
 
 # ---- SORT & FILTER CONTROLS ----
 st.subheader("📊 Portfolio Overview")
+
+# Holdings filter
+show_only_holdings = st.checkbox("🎯 Show only my holdings", value=False)
 
 sort_col1, sort_col2, filter_col = st.columns([2, 1, 2])
 with sort_col1:
@@ -165,15 +198,24 @@ if "Rating" in display_df.columns:
 
 # Apply filters
 filtered_df = display_df.copy()
+if show_only_holdings and "is_held" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["is_held"] == 1].copy()
 if sector_filter != "All" and "Sector" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Sector"] == sector_filter].copy()
 if rating_filter != "All" and "Rating" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Rating"] == rating_filter].copy()
 
-# Apply sort
+# Apply sort — if holdings exist, always sort held tickers first, then by selected column
 ascending = sort_asc == "↑ Ascending"
-if sort_by in filtered_df.columns:
-    filtered_df = filtered_df.sort_values(sort_by, ascending=ascending, na_position="last")
+if "is_held" in filtered_df.columns:
+    filtered_df = filtered_df.sort_values(
+        by=["is_held", sort_by],
+        ascending=[False, ascending],
+        na_position="last"
+    )
+else:
+    if sort_by in filtered_df.columns:
+        filtered_df = filtered_df.sort_values(sort_by, ascending=ascending, na_position="last")
 
 # ---- COLOR HELPER ----
 def _cell_style(val, col):
@@ -223,7 +265,7 @@ def _cell_style(val, col):
     elif col == "RSI(14)":
         if val and val > 70: return "color:#ff6b6b;font-weight:bold"
         elif val and val < 30: return "color:#69db7c;font-weight:bold"
-    elif col == "Est CAGR %":
+    elif col == "Analyst Est Growth %":
         if val and val > 20: return "color:#69db7c;font-weight:bold"
         elif val and val > 0: return "color:#69db7c"
         elif val and val < 0: return "color:#ff6b6b"
@@ -250,7 +292,7 @@ def _fmt(val, col):
         return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Trailing P/E", "Fwd PE", "PEG", "Beta", "RSI(14)"):
         return f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Est CAGR %", "Target Upside %", "vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
+    if col in ("Analyst Est Growth %", "Target Upside %", "vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
         return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
     if col in ("Buy Score", "Tech Score", "Comm Score"):
         return str(int(val)) if isinstance(val, (int, float)) else str(val)
@@ -350,10 +392,14 @@ if len(filtered_df) > 0:
     
     for _, row in filtered_df.iterrows():
         html += "<tr>"
+        held = row.get("is_held", 0) == 1
         for col in cols:
             val = row[col]
             style = _cell_style(val, col)
             text = _fmt(val, col)
+            # Add 🎯 badge to Symbol column for held tickers
+            if col == "Symbol" and held:
+                text = f"🎯 {text}"
             html += f'<td style="{style}">{text}</td>'
         html += "</tr>"
     
@@ -557,9 +603,9 @@ if selected_symbol:
         with mcol5:
             cagr = row.get('projected_cagr')
             if cagr is None or (isinstance(cagr, float) and cagr != cagr):
-                st.metric("Est CAGR", "N/A")
+                st.metric("Analyst Est Growth", "N/A")
             else:
-                st.metric("Est CAGR", f"{cagr}%")
+                st.metric("Analyst Est Growth", f"{cagr}%")
 
         mcol6, mcol7, mcol8, mcol9, mcol10 = st.columns(5)
         with mcol6:
