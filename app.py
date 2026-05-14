@@ -246,9 +246,9 @@ if sector_filter != "All" and "Sector" in filtered_df.columns:
 if rating_filter != "All" and "Rating" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Rating"] == rating_filter].copy()
 
-# Apply sort — if holdings exist, always sort held tickers first, then by selected column
+# Apply sort — only pin held tickers to top when "Show only my holdings" is active
 ascending = sort_asc == "↑ Ascending"
-if "is_held" in filtered_df.columns:
+if show_only_holdings and "is_held" in filtered_df.columns:
     filtered_df = filtered_df.sort_values(
         by=["is_held", sort_by],
         ascending=[False, ascending],
