@@ -68,23 +68,24 @@ st.sidebar.subheader("🎯 My Holdings")
 all_symbols = get_tickers()
 current_holdings = get_holdings()
 
+# Initialize session state for batched selections
+if "pending_holdings" not in st.session_state:
+    st.session_state.pending_holdings = set(current_holdings)
+
 with st.sidebar.expander(f"Select Holdings ({len(current_holdings)} selected)", expanded=False):
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("✅ Select All", use_container_width=True):
-            for sym in all_symbols:
-                toggle_holding(sym, True)
+        if st.button("✅ Select All", use_container_width=True, key="btn_select_all"):
+            st.session_state.pending_holdings = set(all_symbols)
             st.rerun()
     with col_b:
-        if st.button("❌ Clear All", use_container_width=True):
-            for sym in all_symbols:
-                toggle_holding(sym, False)
+        if st.button("❌ Clear All", use_container_width=True, key="btn_clear_all"):
+            st.session_state.pending_holdings = set()
             st.rerun()
 
     st.markdown("---")
     # Build a 3-column checkbox grid for rapid multi-select
     cols_per_row = 3
-    selected_from_grid = []
     for i in range(0, len(all_symbols), cols_per_row):
         row_symbols = all_symbols[i:i + cols_per_row]
         cols = st.columns(cols_per_row)
@@ -92,21 +93,40 @@ with st.sidebar.expander(f"Select Holdings ({len(current_holdings)} selected)", 
             with cols[j]:
                 is_checked = st.checkbox(
                     sym,
-                    value=sym in current_holdings,
+                    value=sym in st.session_state.pending_holdings,
                     key=f"hold_{sym}",
                 )
                 if is_checked:
-                    selected_from_grid.append(sym)
+                    st.session_state.pending_holdings.add(sym)
+                else:
+                    st.session_state.pending_holdings.discard(sym)
 
-    # Detect changes and save
-    if set(selected_from_grid) != set(current_holdings):
-        for sym in selected_from_grid:
+    # Apply button — only writes to DB when clicked
+    pending = st.session_state.pending_holdings
+    changed = pending != set(current_holdings)
+    st.markdown("---")
+    apply_col, count_col = st.columns([1, 2])
+    with apply_col:
+        apply_btn = st.button(
+            "🔄 Apply",
+            type="primary",
+            use_container_width=True,
+            disabled=not changed,
+            key="btn_apply_holdings",
+        )
+    with count_col:
+        st.caption(f"**{len(pending)}** selected")
+
+    if apply_btn:
+        # Write pending selections to DB
+        for sym in pending:
             if sym not in current_holdings:
                 toggle_holding(sym, True)
         for sym in current_holdings:
-            if sym not in selected_from_grid:
+            if sym not in pending:
                 toggle_holding(sym, False)
-        st.success(f"Updated: {len(selected_from_grid)} holdings")
+        st.session_state.pending_holdings = set(get_holdings())
+        st.success(f"Saved: {len(pending)} holdings")
         st.rerun()
 
 # Main dashboard
