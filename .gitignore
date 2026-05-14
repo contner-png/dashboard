@@ -13,6 +13,5 @@ build/
 .venv
 venv/
 ENV/
-data/*.db
 .DS_Store
 .streamlit/
