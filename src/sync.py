@@ -13,6 +13,99 @@ from src.scoring import (
 logger = logging.getLogger(__name__)
 
 
+def _compute_expected_growth(info: dict) -> float:
+    """
+    Ensemble estimate of expected growth using 4 signals with outlier rejection.
+    Analogous to how AI models blend multiple weak predictors into a robust estimate.
+
+    Signals (processed individually):
+      1. PEG-implied growth   = forwardPE / PEG  (market's embedded estimate)
+      2. Revenue growth       = revenueGrowth * 100  (stable fundamental)
+      3. Earnings growth      = earningsGrowth * 100  (analyst consensus, noisy)
+      4. PE trajectory        = implied from forward vs trailing PE
+
+    Outlier rejection:
+      - If earningsGrowth > 3x revenueGrowth: treat as small-base artifact,
+        replace with a dampened blend
+      - Any signal > 100% is capped; any signal < -30% is floored
+
+    Ensemble weights:
+      PEG-implied: 0.35  |  Revenue: 0.30  |  Earnings: 0.25  |  PE trajectory: 0.10
+
+    Returns rounded expected growth %, or None if no signals available.
+    """
+    signals = []
+    weights = []
+
+    # --- Signal 1: PEG-implied growth (market's own estimate) ---
+    peg = info.get("pegRatio")
+    fwd_pe = info.get("forwardPE")
+    trail_pe = info.get("trailingPE")
+    if peg and peg > 0:
+        if fwd_pe and not (isinstance(fwd_pe, float) and fwd_pe != fwd_pe):
+            peg_growth = fwd_pe / peg
+        elif trail_pe and not (isinstance(trail_pe, float) and trail_pe != trail_pe):
+            peg_growth = trail_pe / peg
+        else:
+            peg_growth = None
+        if peg_growth is not None:
+            peg_growth = max(-30, min(peg_growth, 100))
+            signals.append(peg_growth)
+            weights.append(0.35)
+
+    # --- Signal 2: Revenue growth (stable fundamental anchor) ---
+    rg = info.get("revenueGrowth")
+    if rg and not (isinstance(rg, float) and rg != rg):
+        rev_growth = rg * 100
+        rev_growth = max(-30, min(rev_growth, 100))
+        signals.append(rev_growth)
+        weights.append(0.30)
+    else:
+        rev_growth = None
+
+    # --- Signal 3: Earnings growth (analyst consensus, apply small-base filter) ---
+    eg = info.get("earningsGrowth")
+    if eg and not (isinstance(eg, float) and eg != eg):
+        earn_growth = eg * 100
+
+        # Small-base spike detection: if earnings growth is wildly above revenue,
+        # it's likely from a near-zero earnings base (e.g., VICR, MU).
+        if rev_growth is not None and earn_growth > 0:
+            if earn_growth > 3 * rev_growth and earn_growth > 60:
+                # Dampen to a blend of revenue growth + a reasonable premium
+                earn_growth = min(rev_growth * 1.5 + 25, 90)
+            elif earn_growth > 100:
+                # Pure small-base spike with no revenue backing
+                earn_growth = min(earn_growth, 100)
+        else:
+            earn_growth = max(-30, min(earn_growth, 100))
+
+        signals.append(earn_growth)
+        weights.append(0.25)
+
+    # --- Signal 4: PE trajectory (forward vs trailing implies expected growth) ---
+    if fwd_pe and trail_pe and trail_pe > 0:
+        pe_ratio = fwd_pe / trail_pe
+        if pe_ratio < 1:
+            # Forward PE lower than trailing = market expects earnings growth
+            pe_trajectory = ((1 / pe_ratio) - 1) * 100
+            pe_trajectory = max(-30, min(pe_trajectory, 100))
+            signals.append(pe_trajectory)
+            weights.append(0.10)
+
+    if not signals:
+        return None
+
+    # Normalize weights and compute weighted average
+    total_w = sum(weights)
+    weights = [w / total_w for w in weights]
+    blended = sum(s * w for s, w in zip(signals, weights))
+
+    # Final sanity caps
+    blended = max(-30, min(blended, 100))
+    return round(blended, 1)
+
+
 def sync_ticker(symbol: str) -> bool:
     """Fetch and store all metrics for a single ticker."""
     data = fetch_ticker_data(symbol)
@@ -39,41 +132,8 @@ def sync_ticker(symbol: str) -> bool:
     vs_200 = calc_price_vs_ma(history["Close"], 200)
     _, _, macd_signal = calc_macd(history["Close"])
 
-    # Analyst-estimated growth: use earningsGrowth (analyst consensus) directly.
-    # This is Yahoo Finance's compiled analyst estimate for next-year earnings growth.
-    # We cap extreme outliers caused by small-base effects (e.g., near-zero to positive earnings).
-    projected_cagr = None
-    eg = info.get("earningsGrowth")
-    if eg and not (isinstance(eg, float) and eg != eg):
-        projected_cagr = round(eg * 100, 1)
-        # Cap unrealistic small-base spikes (e.g., VICR at 701% from tiny earnings base)
-        if projected_cagr and projected_cagr > 100:
-            projected_cagr = 100.0
-        if projected_cagr and projected_cagr < -50:
-            projected_cagr = -50.0
-    # Fallback 1: revenueGrowth (also analyst consensus)
-    if projected_cagr is None:
-        rg = info.get("revenueGrowth")
-        if rg and not (isinstance(rg, float) and rg != rg):
-            projected_cagr = round(rg * 100, 1)
-            if projected_cagr and projected_cagr > 100:
-                projected_cagr = 100.0
-            if projected_cagr and projected_cagr < -50:
-                projected_cagr = -50.0
-    # Fallback 2: PEG-implied growth (market-implied sustainable rate)
-    if projected_cagr is None:
-        peg = info.get("pegRatio")
-        fwd_pe = info.get("forwardPE")
-        trail_pe = info.get("trailingPE")
-        if peg and peg > 0:
-            if fwd_pe and not (isinstance(fwd_pe, float) and fwd_pe != fwd_pe):
-                projected_cagr = round(fwd_pe / peg, 1)
-            elif trail_pe and not (isinstance(trail_pe, float) and trail_pe != trail_pe):
-                projected_cagr = round(trail_pe / peg, 1)
-            if projected_cagr and projected_cagr > 100:
-                projected_cagr = 100.0
-            if projected_cagr and projected_cagr < -50:
-                projected_cagr = -50.0
+    # Expected growth: ensemble of 4 signals with outlier rejection
+    projected_cagr = _compute_expected_growth(info)
 
     # Compute target upside % and current price (needed for buy score)
     current_price = info.get("currentPrice") or info.get("regularMarketPrice") or history["Close"].iloc[-1]
