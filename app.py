@@ -117,9 +117,11 @@ column_map = {
 
 display_df = df.rename(columns=column_map)
 
-# Reorder columns: scoring components first, then financial metrics
+# Reorder columns: ticker, name, key score + growth metrics first
 desired_cols = [
-    "Sector", "Symbol", "Name", "Rating", "Buy Score",
+    "Sector", "Symbol", "Name",
+    # Key headline metrics
+    "Buy Score", "Est CAGR %", "Target Upside %", "Rating",
     # 5 Pillars
     "Valuation", "Growth", "Profit", "Momentum", "Risk",
     # Key Adjustment Deltas
@@ -127,8 +129,8 @@ desired_cols = [
     # Legacy Scores
     "Tech Score", "Comm Score",
     # Core Financial Metrics
-    "Price", "Trailing P/E", "Fwd PE", "PEG", "Est CAGR %",
-    "Target Upside %", "Beta", "52W High", "52W Low",
+    "Price", "Trailing P/E", "Fwd PE", "PEG", "Beta",
+    "52W High", "52W Low",
     "RSI(14)", "Exhaustion",
     "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
     "Vol 20d", "Vol 50d", "Updated"
