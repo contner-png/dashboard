@@ -141,6 +141,30 @@ _AI_BUCKETS = {
     "IREN": "Crypto",
     # Healthcare
     "IBRX": "Healthcare",
+    "ABCL": "Healthcare",
+    # New from image uploads
+    "011790.KS": "Chemicals / Materials",
+    "3363.TWO": "Photonics / Optics",
+    "6268.T": "Equipment / Manufacturing",
+    "6324.T": "Equipment / Manufacturing",
+    "6503.T": "Power / Infrastructure",
+    "6981.T": "Chemicals / Materials",
+    "AMBQ": "Compute / Semiconductors",
+    "APH": "Networking / Connectivity",
+    "CSCO": "Networking / Connectivity",
+    "HSAI": "Edge Devices / End Products",
+    "K3R.SG": "Equipment / Manufacturing",
+    "LPTH": "Photonics / Optics",
+    "LWLG": "Photonics / Optics",
+    "MBLY": "Edge Devices / End Products",
+    "MRVL": "Compute / Semiconductors",
+    "NIPNF": "Compute / Semiconductors",
+    "OUST": "Edge Devices / End Products",
+    "OZPV.IL": "Photonics / Optics",
+    "PENG": "Data Center / Infrastructure",
+    "RMBS": "Compute / Semiconductors",
+    "TEL": "Networking / Connectivity",
+    "VIAV": "Networking / Connectivity",
 }
 
 
