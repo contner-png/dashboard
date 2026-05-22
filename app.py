@@ -148,10 +148,114 @@ st.markdown(
         padding: 6px 10px;
     }
 
+    .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 24px;
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(8, 14, 28, 0.95), rgba(18, 27, 51, 0.95));
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        box-shadow: 0 14px 28px rgba(2, 6, 23, 0.6);
+        margin-bottom: 18px;
+    }
+
+    .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        box-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
+    }
+
+    .live-badge {
+        font-size: 0.65rem;
+        letter-spacing: 0.18em;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        color: #bbf7d0;
+        text-transform: uppercase;
+    }
+
+    .topbar-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 0.8rem;
+    }
+
+    .section-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin: 26px 0 10px;
+        color: #e2e8f0;
+    }
+
+    .section-subtitle {
+        color: var(--muted);
+        margin-bottom: 12px;
+    }
+
+    .stat-card {
+        background: linear-gradient(160deg, rgba(17, 24, 39, 0.95), rgba(8, 14, 28, 0.9));
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        padding: 16px 18px;
+        box-shadow: 0 14px 26px rgba(2, 6, 23, 0.55);
+    }
+
+    .stat-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--muted);
+    }
+
+    .stat-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #e2e8f0;
+        margin-top: 6px;
+    }
+
+    .stat-sub {
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-top: 6px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+def _format_large_number(val):
+    if val is None or (isinstance(val, float) and val != val):
+        return "—"
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    abs_val = abs(val)
+    if abs_val >= 1_000_000_000_000:
+        return f"${val / 1_000_000_000_000:.2f}T"
+    if abs_val >= 1_000_000_000:
+        return f"${val / 1_000_000_000:.1f}B"
+    if abs_val >= 1_000_000:
+        return f"${val / 1_000_000:.1f}M"
+    if abs_val >= 1_000:
+        return f"${val / 1_000:.1f}K"
+    return f"${val:,.0f}"
+
 
 
 # Initialize database
@@ -165,18 +269,28 @@ if "auto_sync_done" not in st.session_state:
     st.session_state.auto_sync_done = True
 
 
+now_label = datetime.now().strftime("%b %d · %I:%M %p")
+
 st.markdown(
-    """
-    <div class="hero">
-        <div>
-            <h1>📈 Stock Dashboard</h1>
-            <p>Track your stocks with auto-syncing metrics, exhaustion signals, and scoring.</p>
+    f"""
+    <div class="topbar">
+        <div class="topbar-left">
+            <span class="status-dot"></span>
+            <h1>Investment Dashboard</h1>
+            <span class="live-badge">Live</span>
         </div>
-        <div class="hero-pill">Live portfolio insights</div>
+        <div class="topbar-meta">
+            <span>🕒 {now_label}</span>
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
+refresh_cols = st.columns([6, 1])
+with refresh_cols[1]:
+    if st.button("Refresh", key="btn_refresh_top"):
+        st.rerun()
 
 # Sidebar
 
@@ -452,8 +566,75 @@ display_df = display_df[preserve_cols]
 if "Sector" in display_df.columns:
     display_df["Sector"] = display_df["Sector"].fillna("Unknown").replace("", "Unknown")
 
+# ---- DASHBOARD SNAPSHOT ----
+st.markdown("<div class='section-title'>Portfolio Snapshot</div>", unsafe_allow_html=True)
+
+stats_cols = st.columns(4)
+
+holding_count = int(display_df["is_held"].sum()) if "is_held" in display_df.columns else 0
+avg_buy_score = display_df["Buy Score"].mean() if "Buy Score" in display_df.columns else None
+avg_buy_label = f"{avg_buy_score:.1f}" if avg_buy_score == avg_buy_score else "—"
+strong_buys = display_df[display_df["Rating"] == "Strong Buy"].shape[0] if "Rating" in display_df.columns else 0
+
+market_caps = display_df["Market Cap"] if "Market Cap" in display_df.columns else pd.Series([], dtype=float)
+market_cap_total = market_caps.dropna().sum() if len(market_caps) else None
+coverage_pct = (market_caps.notna().mean() * 100) if len(market_caps) else 0
+
+last_sync = None
+if "Updated" in display_df.columns:
+    last_sync = pd.to_datetime(display_df["Updated"], errors="coerce").max()
+last_sync_label = last_sync.strftime("%b %d · %H:%M") if pd.notna(last_sync) else "—"
+
+with stats_cols[0]:
+    st.markdown(
+        f"""
+        <div class="stat-card">
+            <div class="stat-label">Tracked Tickers</div>
+            <div class="stat-value">{len(display_df):,}</div>
+            <div class="stat-sub">{holding_count} holdings tagged</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with stats_cols[1]:
+    st.markdown(
+        f"""
+        <div class="stat-card">
+            <div class="stat-label">Avg Buy Score</div>
+            <div class="stat-value">{avg_buy_label}</div>
+            <div class="stat-sub">{strong_buys} strong buys</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with stats_cols[2]:
+    st.markdown(
+        f"""
+        <div class="stat-card">
+            <div class="stat-label">Total Market Cap</div>
+            <div class="stat-value">{_format_large_number(market_cap_total)}</div>
+            <div class="stat-sub">{coverage_pct:.0f}% coverage</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with stats_cols[3]:
+    st.markdown(
+        f"""
+        <div class="stat-card">
+            <div class="stat-label">Last Sync</div>
+            <div class="stat-value">{last_sync_label}</div>
+            <div class="stat-sub">Auto-sync on launch</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown("<div class='section-title'>Portfolio Overview</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-subtitle'>Filter, sort, and explore your tracked universe.</div>", unsafe_allow_html=True)
+
+
 # ---- SORT & FILTER CONTROLS ----
-st.subheader("📊 Portfolio Overview")
 
 # View mode + display type
 view_col, display_col, holdings_col = st.columns([1.2, 1.1, 1.4])
@@ -590,22 +771,7 @@ def _cell_style(val, col):
     return ""
 
 def _fmt_market_cap(val):
-    if val is None or (isinstance(val, float) and val != val):
-        return "—"
-    try:
-        val = float(val)
-    except (TypeError, ValueError):
-        return str(val)
-    abs_val = abs(val)
-    if abs_val >= 1_000_000_000_000:
-        return f"${val / 1_000_000_000_000:.2f}T"
-    if abs_val >= 1_000_000_000:
-        return f"${val / 1_000_000_000:.1f}B"
-    if abs_val >= 1_000_000:
-        return f"${val / 1_000_000:.1f}M"
-    if abs_val >= 1_000:
-        return f"${val / 1_000:.1f}K"
-    return f"${val:,.0f}"
+    return _format_large_number(val)
 
 
 def _fmt(val, col):
@@ -654,11 +820,11 @@ if len(filtered_df) > 0:
             """
             <style>
             .portfolio-card {
-                background: #0f111a;
-                border: 1px solid #2a2f3a;
-                border-radius: 14px;
-                padding: 16px;
-                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+                background: linear-gradient(160deg, rgba(15, 23, 42, 0.92), rgba(8, 14, 28, 0.95));
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 16px;
+                padding: 18px;
+                box-shadow: 0 16px 28px rgba(2, 6, 23, 0.6);
                 margin-bottom: 16px;
             }
             .card-header {
@@ -669,27 +835,29 @@ if len(filtered_df) > 0:
                 margin-bottom: 8px;
             }
             .card-symbol {
-                font-size: 1.05em;
+                font-size: 1.1em;
                 font-weight: 700;
+                color: #e2e8f0;
             }
             .card-name {
                 font-size: 0.8em;
-                opacity: 0.75;
+                color: #94a3b8;
             }
             .card-score {
-                color: #fff;
+                color: #0b1020;
                 font-weight: 700;
                 padding: 6px 10px;
                 border-radius: 10px;
                 min-width: 56px;
                 text-align: center;
+                background: linear-gradient(135deg, #38bdf8, #6366f1);
             }
             .card-meta {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 10px;
                 font-size: 0.78em;
-                color: #cfd5e3;
+                color: #cbd5f5;
                 margin-bottom: 10px;
             }
             .pillar-item {
@@ -699,17 +867,17 @@ if len(filtered_df) > 0:
                 display: flex;
                 justify-content: space-between;
                 font-size: 0.7em;
-                color: #a7b0c5;
+                color: #94a3b8;
                 margin-bottom: 4px;
             }
             .pillar-bar {
-                background: #1f2433;
+                background: rgba(148, 163, 184, 0.2);
                 border-radius: 6px;
                 height: 6px;
                 overflow: hidden;
             }
             .pillar-fill {
-                background: #69db7c;
+                background: linear-gradient(90deg, #22c55e, #38bdf8);
                 height: 6px;
                 border-radius: 6px;
             }
