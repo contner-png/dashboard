@@ -148,50 +148,6 @@ st.markdown(
         padding: 6px 10px;
     }
 
-    .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 18px 24px;
-        border-radius: 18px;
-        background: linear-gradient(135deg, rgba(8, 14, 28, 0.95), rgba(18, 27, 51, 0.95));
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        box-shadow: 0 14px 28px rgba(2, 6, 23, 0.6);
-        margin-bottom: 18px;
-    }
-
-    .topbar-left {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #22c55e;
-        box-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
-    }
-
-    .live-badge {
-        font-size: 0.65rem;
-        letter-spacing: 0.18em;
-        padding: 4px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(34, 197, 94, 0.4);
-        color: #bbf7d0;
-        text-transform: uppercase;
-    }
-
-    .topbar-meta {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        color: var(--muted);
-        font-size: 0.8rem;
-    }
-
     .section-title {
         font-size: 1.2rem;
         font-weight: 700;
@@ -268,29 +224,6 @@ if "auto_sync_done" not in st.session_state:
             sync_all()
     st.session_state.auto_sync_done = True
 
-
-now_label = datetime.now().strftime("%b %d · %I:%M %p")
-
-st.markdown(
-    f"""
-    <div class="topbar">
-        <div class="topbar-left">
-            <span class="status-dot"></span>
-            <h1>Investment Dashboard</h1>
-            <span class="live-badge">Live</span>
-        </div>
-        <div class="topbar-meta">
-            <span>🕒 {now_label}</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-refresh_cols = st.columns([6, 1])
-with refresh_cols[1]:
-    if st.button("Refresh", key="btn_refresh_top"):
-        st.rerun()
 
 # Sidebar
 
@@ -674,8 +607,23 @@ if "Rating" in display_df.columns:
     rating_filter = st.selectbox("Filter by Rating", all_ratings, index=0, key="rating_filter")
 
 
-compare_options = display_df["Symbol"].dropna().tolist() if "Symbol" in display_df.columns else []
-compare_symbols = st.multiselect("Compare selected tickers", options=compare_options)
+if "compare_selected" not in st.session_state:
+    st.session_state.compare_selected = set()
+
+if "Symbol" in display_df.columns:
+    valid_symbols = set(display_df["Symbol"].dropna())
+    st.session_state.compare_selected = {s for s in st.session_state.compare_selected if s in valid_symbols}
+
+compare_symbols = sorted(st.session_state.compare_selected)
+
+if view_type != "Cards":
+    st.caption("Switch to Cards view to select tickers for comparison.")
+else:
+    st.caption("Use the Compare checkbox on each card to build your comparison list.")
+
+if st.button("Clear compare", key="clear_compare"):
+    st.session_state.compare_selected = set()
+    compare_symbols = []
 
 # Apply filters
 filtered_df = display_df.copy()
@@ -896,6 +844,15 @@ if len(filtered_df) > 0:
                 buy_score_text = _fmt(buy, "Buy Score")
                 price_text = _fmt(row.get("Price"), "Price")
                 market_cap_text = _fmt_market_cap(row.get("Market Cap"))
+
+                if symbol:
+                    compare_checked = symbol in st.session_state.compare_selected
+                    compare_val = st.checkbox("Compare", value=compare_checked, key=f"compare_{symbol}")
+                    if compare_val:
+                        st.session_state.compare_selected.add(symbol)
+                    else:
+                        st.session_state.compare_selected.discard(symbol)
+
 
                 score_color = "#1a5f1a" if buy and buy >= 80 else "#2e8b2e" if buy and buy >= 65 else "#daa520" if buy and buy >= 45 else "#cd853f" if buy and buy >= 30 else "#b22222"
 
