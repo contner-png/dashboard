@@ -9,14 +9,190 @@ from src.fetcher import fetch_ticker_data
 
 st.set_page_config(page_title="Stock Dashboard", page_icon="📈", layout="wide")
 
+# Global styling
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700&display=swap');
+
+    :root {
+        --bg: #070a14;
+        --panel: #111827;
+        --panel-2: #0f172a;
+        --border: rgba(148, 163, 184, 0.18);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-2: #a855f7;
+        --glow: rgba(56, 189, 248, 0.18);
+    }
+
+    .stApp {
+        background: radial-gradient(circle at 20% 0%, #101828 0%, #070a14 55%, #05070f 100%);
+        color: var(--text);
+        font-family: 'Manrope', sans-serif;
+    }
+
+    h1, h2, h3, h4 {
+        font-family: 'Syne', sans-serif;
+        letter-spacing: -0.03em;
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #0b1020;
+        border-right: 1px solid var(--border);
+    }
+
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3,
+    section[data-testid="stSidebar"] h4 {
+        color: var(--text);
+    }
+
+    .block-container {
+        padding-top: 1.75rem;
+        padding-bottom: 4rem;
+    }
+
+    div[data-testid="metric-container"] {
+        background: linear-gradient(160deg, rgba(17, 24, 39, 0.95), rgba(15, 23, 42, 0.9));
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.45);
+    }
+
+    .hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding: 24px 28px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.95));
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        box-shadow: 0 18px 34px rgba(15, 23, 42, 0.55);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .hero::after {
+        content: "";
+        position: absolute;
+        right: -120px;
+        top: -80px;
+        width: 260px;
+        height: 260px;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 70%);
+        opacity: 0.7;
+    }
+
+    .hero h1 {
+        margin: 0;
+        font-size: 2.2rem;
+    }
+
+    .hero p {
+        margin: 6px 0 0;
+        color: var(--muted);
+    }
+
+    .hero-pill {
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.12);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        color: #bae6fd;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .stButton>button {
+        border-radius: 12px;
+        background: linear-gradient(135deg, #38bdf8, #6366f1);
+        color: #0b1020;
+        border: none;
+        font-weight: 600;
+        padding: 0.55rem 1rem;
+        box-shadow: 0 10px 18px rgba(56, 189, 248, 0.25);
+    }
+
+    .stButton>button:hover {
+        filter: brightness(1.05);
+        transform: translateY(-1px);
+    }
+
+    input, textarea {
+        background: rgba(15, 23, 42, 0.9) !important;
+        color: var(--text) !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        background: rgba(15, 23, 42, 0.9) !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        color: var(--text) !important;
+    }
+
+    .stRadio [role="radiogroup"] {
+        gap: 10px;
+    }
+
+    .stRadio div[role="radio"] {
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: 999px;
+        padding: 6px 10px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # Initialize database
 init_db()
 init_holdings()
 
-st.title("📈 Stock Dashboard")
-st.markdown("Track your stocks with auto-syncing metrics, exhaustion signals, and scoring.")
+if "auto_sync_done" not in st.session_state:
+    if get_tickers():
+        with st.spinner("Auto-syncing tickers..."):
+            sync_all()
+    st.session_state.auto_sync_done = True
+
+
+st.markdown(
+    """
+    <div class="hero">
+        <div>
+            <h1>📈 Stock Dashboard</h1>
+            <p>Track your stocks with auto-syncing metrics, exhaustion signals, and scoring.</p>
+        </div>
+        <div class="hero-pill">Live portfolio insights</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Sidebar
+
+def _extract_csv_symbols(upload_df: pd.DataFrame) -> list[str]:
+    if upload_df is None or upload_df.empty:
+        return []
+    normalized_cols = {c.lower(): c for c in upload_df.columns}
+    for key in ("symbol", "ticker", "tickers", "symbols"):
+        if key in normalized_cols:
+            col = normalized_cols[key]
+            break
+    else:
+        col = upload_df.columns[0]
+    series = upload_df[col].astype(str).str.strip().str.upper()
+    return sorted({s for s in series if s and s not in ("NAN", "NONE")})
+
 st.sidebar.header("Controls")
 
 # Add ticker
@@ -39,6 +215,40 @@ if st.sidebar.button("Bulk Add") and bulk_tickers:
         progress.progress((i + 1) / len(symbols))
     st.sidebar.success(f"Added {len(symbols)} tickers")
     st.rerun()
+
+# CSV import
+st.sidebar.markdown("---")
+st.sidebar.subheader("📥 Import from CSV")
+uploaded_csv = st.sidebar.file_uploader("Upload CSV", type=["csv"], key="csv_upload")
+if uploaded_csv is not None:
+    try:
+        upload_df = pd.read_csv(uploaded_csv)
+    except Exception:
+        upload_df = None
+        st.sidebar.error("Unable to read CSV. Please upload a valid file.")
+    if upload_df is not None:
+        csv_symbols = _extract_csv_symbols(upload_df)
+        st.sidebar.caption(f"Found {len(csv_symbols)} unique symbols.")
+        import_now = st.sidebar.button("Import CSV", key="btn_import_csv")
+        if import_now:
+            existing = set(get_tickers())
+            to_add = [s for s in csv_symbols if s not in existing]
+            skipped = [s for s in csv_symbols if s in existing]
+            progress = st.sidebar.progress(0) if to_add else None
+            synced = []
+            failed = []
+            for idx, sym in enumerate(to_add):
+                if sync_ticker(sym):
+                    synced.append(sym)
+                else:
+                    failed.append(sym)
+                if progress:
+                    progress.progress((idx + 1) / len(to_add))
+            st.sidebar.success(
+                f"Imported {len(synced)} tickers, skipped {len(skipped)} duplicates, failed {len(failed)}"
+            )
+            st.rerun()
+
 
 # Sync controls
 st.sidebar.markdown("---")
@@ -145,6 +355,7 @@ column_map = {
     "name": "Name",
     "sector": "Sector",
     "price": "Price",
+    "market_cap": "Market Cap",
     "pe_trailing": "Trailing P/E",
     "pe_forward": "Fwd PE",
     "peg_ratio": "PEG",
@@ -185,9 +396,9 @@ column_map = {
 
 display_df = df.rename(columns=column_map)
 
-# Reorder columns: ticker, name, key score + growth metrics first
-desired_cols = [
-    "Sector", "Symbol", "Name",
+# Reorder columns and define view modes
+full_cols = [
+    "Sector", "Symbol", "Name", "Market Cap",
     # Key headline metrics
     "Buy Score", "Analyst Est Growth %", "Target Upside %", "Rating",
     # 5 Pillars
@@ -204,8 +415,35 @@ desired_cols = [
     "Vol 20d", "Vol 50d", "Updated"
 ]
 
+summary_cols = [
+    "Sector", "Symbol", "Name", "Market Cap",
+    "Buy Score", "Rating", "Analyst Est Growth %", "Target Upside %",
+    "Valuation", "Growth", "Profit", "Momentum", "Risk",
+    "Price", "Updated",
+]
+
+score_cols = [
+    "Sector", "Symbol", "Name", "Buy Score", "Rating",
+    "Valuation", "Growth", "Profit", "Momentum", "Risk",
+    "PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
+    "Tech Score", "Comm Score", "Updated",
+]
+
+technical_cols = [
+    "Sector", "Symbol", "Name", "Price", "Market Cap",
+    "RSI(14)", "Exhaustion", "vs 50MA (%)", "vs 200MA (%)",
+    "MACD", "BB Position", "ROC(10d)", "Vol 20d", "Vol 50d", "Updated",
+]
+
+view_cols_map = {
+    "Summary": summary_cols,
+    "Scores": score_cols,
+    "Technicals": technical_cols,
+    "Full": full_cols,
+}
+
 # Preserve is_held for filtering/sorting even though we don't display it as a column
-preserve_cols = [c for c in desired_cols if c in display_df.columns]
+preserve_cols = [c for c in full_cols if c in display_df.columns]
 if "is_held" in display_df.columns and "is_held" not in preserve_cols:
     preserve_cols.append("is_held")
 display_df = display_df[preserve_cols]
@@ -217,13 +455,30 @@ if "Sector" in display_df.columns:
 # ---- SORT & FILTER CONTROLS ----
 st.subheader("📊 Portfolio Overview")
 
-# Holdings filter
-show_only_holdings = st.checkbox("🎯 Show only my holdings", value=False)
+# View mode + display type
+view_col, display_col, holdings_col = st.columns([1.2, 1.1, 1.4])
+with view_col:
+    view_mode = st.selectbox("View mode", list(view_cols_map.keys()), index=0)
+with display_col:
+    view_type = st.radio("Display", ["Table", "Cards"], horizontal=True)
+with holdings_col:
+    show_only_holdings = st.checkbox("🎯 Show only my holdings", value=False)
+
+active_cols = [
+    c for c in view_cols_map.get(view_mode, full_cols)
+    if c in display_df.columns and c != "is_held"
+]
 
 sort_col1, sort_col2, filter_col = st.columns([2, 1, 2])
 with sort_col1:
-    sort_options = [c for c in display_df.columns if c != "Updated"]
-    sort_by = st.selectbox("Sort by", sort_options, index=sort_options.index("Buy Score") if "Buy Score" in sort_options else 0)
+    sort_options = [c for c in active_cols if c != "Updated"]
+    if not sort_options:
+        sort_options = [c for c in display_df.columns if c not in ("Updated", "is_held")]
+    sort_by = st.selectbox(
+        "Sort by",
+        sort_options,
+        index=sort_options.index("Buy Score") if "Buy Score" in sort_options else 0,
+    )
 with sort_col2:
     sort_asc = st.radio("Order", ["↓ Descending", "↑ Ascending"], index=0)
 with filter_col:
@@ -236,6 +491,10 @@ if "Rating" in display_df.columns:
     rating_col = st.columns([1, 1])[1] if 'rating_col' not in locals() else None
     all_ratings = ["All"] + ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
     rating_filter = st.selectbox("Filter by Rating", all_ratings, index=0, key="rating_filter")
+
+
+compare_options = display_df["Symbol"].dropna().tolist() if "Symbol" in display_df.columns else []
+compare_symbols = st.multiselect("Compare selected tickers", options=compare_options)
 
 # Apply filters
 filtered_df = display_df.copy()
@@ -257,6 +516,11 @@ if show_only_holdings and "is_held" in filtered_df.columns:
 else:
     if sort_by in filtered_df.columns:
         filtered_df = filtered_df.sort_values(sort_by, ascending=ascending, na_position="last")
+
+if active_cols:
+    table_df = filtered_df[active_cols].copy()
+else:
+    table_df = filtered_df.copy()
 
 # ---- COLOR HELPER ----
 def _cell_style(val, col):
@@ -325,10 +589,31 @@ def _cell_style(val, col):
         return "font-weight:600;white-space:nowrap"
     return ""
 
+def _fmt_market_cap(val):
+    if val is None or (isinstance(val, float) and val != val):
+        return "—"
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    abs_val = abs(val)
+    if abs_val >= 1_000_000_000_000:
+        return f"${val / 1_000_000_000_000:.2f}T"
+    if abs_val >= 1_000_000_000:
+        return f"${val / 1_000_000_000:.1f}B"
+    if abs_val >= 1_000_000:
+        return f"${val / 1_000_000:.1f}M"
+    if abs_val >= 1_000:
+        return f"${val / 1_000:.1f}K"
+    return f"${val:,.0f}"
+
+
 def _fmt(val, col):
     """Format a value for display."""
     if val is None or (isinstance(val, float) and val != val):
         return "—"
+    if col == "Market Cap":
+        return _fmt_market_cap(val)
     if col in ("Price", "52W High", "52W Low"):
         return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Trailing P/E", "Fwd PE", "PEG", "Beta", "RSI(14)"):
@@ -346,108 +631,264 @@ def _fmt(val, col):
         return f"{val:,.0f}" if isinstance(val, (int, float)) else str(val)
     return str(val)
 
-# ---- CUSTOM HTML TABLE WITH STICKY COLUMNS ----
+# ---- COMPARE SELECTED ----
+if compare_symbols:
+    compare_cols = [
+        "Symbol", "Name", "Rating", "Buy Score",
+        "Price", "Market Cap", "Analyst Est Growth %", "Target Upside %",
+        "Valuation", "Growth", "Profit", "Momentum", "Risk",
+    ]
+    compare_df = display_df[display_df["Symbol"].isin(compare_symbols)].copy()
+    compare_cols = [c for c in compare_cols if c in compare_df.columns]
+    if compare_cols:
+        compare_view = compare_df[compare_cols].copy()
+        for col in compare_view.columns:
+            compare_view[col] = compare_view[col].apply(lambda v: _fmt(v, col))
+        with st.expander("🔍 Compare Selected", expanded=True):
+            st.dataframe(compare_view, use_container_width=True, hide_index=True)
+
+# ---- PORTFOLIO VIEW ----
 if len(filtered_df) > 0:
-    cols = filtered_df.columns.tolist()
-    
-    # Build HTML table
-    html = """
-    <style>
-    .dash-table-wrap {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        border-radius: 8px;
-        border: 1px solid #333;
-        max-height: 600px;
-        overflow-y: auto;
-    }
-    .dash-table {
-        border-collapse: separate;
-        border-spacing: 0;
-        font-size: 13px;
-        width: max-content;
-        min-width: 100%;
-    }
-    .dash-table thead th {
-        position: sticky;
-        top: 0;
-        background: #0e1117;
-        color: #fafafa;
-        font-weight: 600;
-        padding: 10px 12px;
-        border-bottom: 2px solid #333;
-        white-space: nowrap;
-        z-index: 10;
-        text-align: left;
-    }
-    .dash-table tbody td {
-        padding: 8px 12px;
-        border-bottom: 1px solid #262730;
-        white-space: nowrap;
-        background: #0e1117;
-        color: #fafafa;
-    }
-    .dash-table tbody tr:hover td {
-        background: #1a1d29;
-    }
-    /* Sticky first column (Sector) */
-    .dash-table thead th:first-child,
-    .dash-table tbody td:first-child {
-        position: sticky;
-        left: 0;
-        min-width: 130px;
-        max-width: 130px;
-        z-index: 20;
-        background: #0e1117;
-        border-right: 2px solid #333;
-    }
-    .dash-table thead th:first-child {
-        z-index: 30;
-        background: #0e1117;
-    }
-    /* Sticky second column (Symbol) */
-    .dash-table thead th:nth-child(2),
-    .dash-table tbody td:nth-child(2) {
-        position: sticky;
-        left: 130px;
-        min-width: 75px;
-        max-width: 75px;
-        z-index: 20;
-        background: #0e1117;
-        border-right: 2px solid #333;
-    }
-    .dash-table thead th:nth-child(2) {
-        z-index: 30;
-        background: #0e1117;
-    }
-    </style>
-    <div class="dash-table-wrap">
-    <table class="dash-table">
-    <thead>
-    <tr>
-    """
-    
-    for col in cols:
-        html += f"<th>{col}</th>"
-    html += "</tr></thead><tbody>"
-    
-    for _, row in filtered_df.iterrows():
-        html += "<tr>"
-        held = row.get("is_held", 0) == 1
+    if view_type == "Cards":
+        st.markdown(
+            """
+            <style>
+            .portfolio-card {
+                background: #0f111a;
+                border: 1px solid #2a2f3a;
+                border-radius: 14px;
+                padding: 16px;
+                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+                margin-bottom: 16px;
+            }
+            .card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+            .card-symbol {
+                font-size: 1.05em;
+                font-weight: 700;
+            }
+            .card-name {
+                font-size: 0.8em;
+                opacity: 0.75;
+            }
+            .card-score {
+                color: #fff;
+                font-weight: 700;
+                padding: 6px 10px;
+                border-radius: 10px;
+                min-width: 56px;
+                text-align: center;
+            }
+            .card-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                font-size: 0.78em;
+                color: #cfd5e3;
+                margin-bottom: 10px;
+            }
+            .pillar-item {
+                margin-bottom: 8px;
+            }
+            .pillar-label {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.7em;
+                color: #a7b0c5;
+                margin-bottom: 4px;
+            }
+            .pillar-bar {
+                background: #1f2433;
+                border-radius: 6px;
+                height: 6px;
+                overflow: hidden;
+            }
+            .pillar-fill {
+                background: #69db7c;
+                height: 6px;
+                border-radius: 6px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        card_cols = st.columns(3)
+        for idx, (_, row) in enumerate(filtered_df.iterrows()):
+            with card_cols[idx % 3]:
+                symbol = row.get("Symbol", "")
+                name = row.get("Name", "")
+                rating = row.get("Rating") or "—"
+                buy = row.get("Buy Score")
+                buy_score_text = _fmt(buy, "Buy Score")
+                price_text = _fmt(row.get("Price"), "Price")
+                market_cap_text = _fmt_market_cap(row.get("Market Cap"))
+
+                score_color = "#1a5f1a" if buy and buy >= 80 else "#2e8b2e" if buy and buy >= 65 else "#daa520" if buy and buy >= 45 else "#cd853f" if buy and buy >= 30 else "#b22222"
+
+                pillars = [
+                    ("Valuation", row.get("Valuation")),
+                    ("Growth", row.get("Growth")),
+                    ("Profit", row.get("Profit")),
+                    ("Momentum", row.get("Momentum")),
+                    ("Risk", row.get("Risk")),
+                ]
+                pillar_html = ""
+                for label, value in pillars:
+                    if value is None or (isinstance(value, float) and value != value):
+                        display_val = "—"
+                        width = 0
+                    else:
+                        width = max(0, min(float(value) / 20 * 100, 100))
+                        display_val = f"{float(value):.0f}/20"
+                    pillar_html += f"""
+                    <div class='pillar-item'>
+                        <div class='pillar-label'>
+                            <span>{label}</span>
+                            <span>{display_val}</span>
+                        </div>
+                        <div class='pillar-bar'>
+                            <div class='pillar-fill' style='width: {width:.0f}%'></div>
+                        </div>
+                    </div>
+                    """
+
+                st.markdown(
+                    f"""
+                    <div class="portfolio-card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-symbol">{symbol}</div>
+                                <div class="card-name">{name}</div>
+                            </div>
+                            <div class="card-score" style="background:{score_color};">{buy_score_text}</div>
+                        </div>
+                        <div class="card-meta">
+                            <span>Rating: <strong>{rating}</strong></span>
+                            <span>Price: {price_text}</span>
+                            <span>Mkt Cap: {market_cap_text}</span>
+                        </div>
+                        {pillar_html}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        st.caption(f"Showing {len(filtered_df)} of {len(display_df)} tickers")
+    else:
+        cols = table_df.columns.tolist()
+        held_symbols = set()
+        if "is_held" in filtered_df.columns and "Symbol" in filtered_df.columns:
+            held_symbols = set(filtered_df.loc[filtered_df["is_held"] == 1, "Symbol"])
+
+        html = """
+        <style>
+        .dash-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            max-height: 600px;
+            overflow-y: auto;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
+        }
+        .dash-table {
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 12.8px;
+            width: max-content;
+            min-width: 100%;
+        }
+        .dash-table thead th {
+            position: sticky;
+            top: 0;
+            background: rgba(15, 23, 42, 0.98);
+            color: #e2e8f0;
+            font-weight: 600;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+            white-space: nowrap;
+            z-index: 10;
+            text-align: left;
+        }
+        .dash-table tbody td {
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+            white-space: nowrap;
+            background: rgba(15, 23, 42, 0.72);
+            color: #e2e8f0;
+        }
+        .dash-table tbody tr:hover td {
+            background: rgba(56, 189, 248, 0.08);
+        }
+        .dash-table tbody tr:nth-child(even) td {
+            background: rgba(15, 23, 42, 0.9);
+        }
+        /* Sticky first column (Sector) */
+        .dash-table thead th:first-child,
+        .dash-table tbody td:first-child {
+            position: sticky;
+            left: 0;
+            min-width: 130px;
+            max-width: 130px;
+            z-index: 20;
+            background: rgba(15, 23, 42, 0.98);
+            border-right: 1px solid rgba(148, 163, 184, 0.2);
+        }
+        .dash-table thead th:first-child {
+            z-index: 30;
+            background: rgba(15, 23, 42, 0.98);
+        }
+        /* Sticky second column (Symbol) */
+        .dash-table thead th:nth-child(2),
+        .dash-table tbody td:nth-child(2) {
+            position: sticky;
+            left: 130px;
+            min-width: 75px;
+            max-width: 75px;
+            z-index: 20;
+            background: rgba(15, 23, 42, 0.98);
+            border-right: 1px solid rgba(148, 163, 184, 0.2);
+        }
+        .dash-table thead th:nth-child(2) {
+            z-index: 30;
+            background: rgba(15, 23, 42, 0.98);
+        }
+        </style>
+        <div class="dash-table-wrap">
+        <table class="dash-table">
+        <thead>
+        <tr>
+        """
+
         for col in cols:
-            val = row[col]
-            style = _cell_style(val, col)
-            text = _fmt(val, col)
-            # Add 🎯 badge to Symbol column for held tickers
-            if col == "Symbol" and held:
-                text = f"🎯 {text}"
-            html += f'<td style="{style}">{text}</td>'
-        html += "</tr>"
-    
-    html += "</tbody></table></div>"
-    
-    st.markdown(html, unsafe_allow_html=True)
-    st.caption(f"Showing {len(filtered_df)} of {len(display_df)} tickers")
+            html += f"<th>{col}</th>"
+        html += "</tr></thead><tbody>"
+
+        for _, row in table_df.iterrows():
+            html += "<tr>"
+            symbol = row.get("Symbol")
+            held = symbol in held_symbols
+            for col in cols:
+                val = row[col]
+                style = _cell_style(val, col)
+                text = _fmt(val, col)
+                if col == "Symbol" and held:
+                    text = f"🎯 {text}"
+                html += f'<td style="{style}">{text}</td>'
+            html += "</tr>"
+
+        html += "</tbody></table></div>"
+
+        st.markdown(html, unsafe_allow_html=True)
+        st.caption(f"Showing {len(filtered_df)} of {len(display_df)} tickers")
 else:
     st.info("No tickers match the selected filter.")
 
@@ -632,7 +1073,7 @@ if selected_symbol:
                 st.markdown(desc)
 
         st.markdown("#### Key Metrics")
-        mcol1, mcol2, mcol3, mcol4, mcol5 = st.columns(5)
+        mcol1, mcol2, mcol3, mcol4, mcol5, mcol6 = st.columns(6)
         with mcol1:
             st.metric("Price", f"${row.get('price', 'N/A')}")
         with mcol2:
@@ -642,38 +1083,41 @@ if selected_symbol:
         with mcol4:
             st.metric("PEG", f"{row.get('peg_ratio', 'N/A')}")
         with mcol5:
+            market_cap = row.get('market_cap')
+            st.metric("Market Cap", _fmt_market_cap(market_cap))
+        with mcol6:
             cagr = row.get('projected_cagr')
             if cagr is None or (isinstance(cagr, float) and cagr != cagr):
                 st.metric("Analyst Est Growth", "N/A")
             else:
                 st.metric("Analyst Est Growth", f"{cagr}%")
 
-        mcol6, mcol7, mcol8, mcol9, mcol10 = st.columns(5)
-        with mcol6:
+        mcol7, mcol8, mcol9, mcol10, mcol11 = st.columns(5)
+        with mcol7:
             upside = row.get('target_upside')
             if upside is None or (isinstance(upside, float) and upside != upside):
                 st.metric("Target Upside", "N/A")
             else:
                 st.metric("Target Upside", f"{upside}%")
-        with mcol7:
+        with mcol8:
             beta = row.get('beta')
             if beta is None or (isinstance(beta, float) and beta != beta):
                 st.metric("Beta", "N/A")
             else:
                 st.metric("Beta", f"{beta}")
-        with mcol8:
+        with mcol9:
             w52h = row.get('week_52_high')
             if w52h is None or (isinstance(w52h, float) and w52h != w52h):
                 st.metric("52W High", "N/A")
             else:
                 st.metric("52W High", f"${w52h}")
-        with mcol9:
+        with mcol10:
             w52l = row.get('week_52_low')
             if w52l is None or (isinstance(w52l, float) and w52l != w52l):
                 st.metric("52W Low", "N/A")
             else:
                 st.metric("52W Low", f"${w52l}")
-        with mcol10:
+        with mcol11:
             st.metric("RSI(14)", f"{row.get('rsi_14', 'N/A')}")
 
         st.markdown("#### Scores")
@@ -752,7 +1196,7 @@ if selected_symbol:
 # Export
 st.markdown("---")
 if st.button("📥 Export to CSV"):
-    csv = display_df.to_csv(index=False)
+    csv = table_df.to_csv(index=False)
     st.download_button(
         label="Download CSV",
         data=csv,

@@ -161,6 +161,7 @@ def sync_ticker(symbol: str) -> bool:
 
     metrics = {
         "price": round(current_price, 2),
+        "market_cap": info.get("marketCap"),
         "pe_trailing": info.get("trailingPE"),
         "pe_forward": info.get("forwardPE"),
         "peg_ratio": info.get("pegRatio"),

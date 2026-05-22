@@ -3,7 +3,17 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "stocks.db")
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "stocks.db")
+ENV_DB_PATH = os.environ.get("STOCKS_DB_PATH")
+ENV_DB_DIR = os.environ.get("STOCKS_DB_DIR") or os.environ.get("RENDER_DISK_PATH")
+if ENV_DB_PATH:
+    DB_PATH = ENV_DB_PATH
+elif ENV_DB_DIR:
+    DB_PATH = os.path.join(ENV_DB_DIR, "stocks.db")
+else:
+    DB_PATH = DEFAULT_DB_PATH
+
+DB_PATH = os.path.expanduser(DB_PATH)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
@@ -28,6 +38,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS metrics (
             symbol TEXT PRIMARY KEY,
             price REAL,
+            market_cap REAL,
             pe_trailing REAL,
             pe_forward REAL,
             peg_ratio REAL,
@@ -55,6 +66,12 @@ def init_db():
             FOREIGN KEY (symbol) REFERENCES tickers(symbol)
         )
     """)
+
+
+    cursor.execute("PRAGMA table_info(metrics)")
+    metric_cols = {row[1] for row in cursor.fetchall()}
+    if "market_cap" not in metric_cols:
+        cursor.execute("ALTER TABLE metrics ADD COLUMN market_cap REAL")
 
     conn.commit()
     conn.close()
