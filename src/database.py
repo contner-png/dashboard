@@ -62,6 +62,8 @@ def init_db():
             technical_score INTEGER,
             commentary_score INTEGER,
             buy_score INTEGER,
+            data_coverage REAL,
+            score_mode TEXT,
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (symbol) REFERENCES tickers(symbol)
         )
@@ -72,6 +74,10 @@ def init_db():
     metric_cols = {row[1] for row in cursor.fetchall()}
     if "market_cap" not in metric_cols:
         cursor.execute("ALTER TABLE metrics ADD COLUMN market_cap REAL")
+    if "data_coverage" not in metric_cols:
+        cursor.execute("ALTER TABLE metrics ADD COLUMN data_coverage REAL")
+    if "score_mode" not in metric_cols:
+        cursor.execute("ALTER TABLE metrics ADD COLUMN score_mode TEXT")
 
     conn.commit()
     conn.close()

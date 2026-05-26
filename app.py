@@ -449,6 +449,8 @@ column_map = {
     "commentary_score": "Comm Score",
     "buy_score": "Buy Score",
     "rating_band": "Rating",
+    "data_coverage": "Data Coverage %",
+    "score_mode": "Score Mode",
     "score_valuation": "Valuation",
     "score_growth": "Growth",
     "score_profitability": "Profit",
@@ -472,7 +474,7 @@ display_df = df.rename(columns=column_map)
 full_cols = [
     "Sector", "Symbol", "Name", "Market Cap",
     # Key headline metrics
-    "Buy Score", "Analyst Est Growth %", "Target Upside %", "Rating",
+    "Buy Score", "Rating", "Score Mode", "Data Coverage %", "Analyst Est Growth %", "Target Upside %",
     # 5 Pillars
     "Valuation", "Growth", "Profit", "Momentum", "Risk",
     # Key Adjustment Deltas
@@ -489,20 +491,20 @@ full_cols = [
 
 summary_cols = [
     "Sector", "Symbol", "Name", "Market Cap",
-    "Buy Score", "Rating", "Analyst Est Growth %", "Target Upside %",
+    "Buy Score", "Rating", "Score Mode", "Data Coverage %", "Analyst Est Growth %", "Target Upside %",
     "Valuation", "Growth", "Profit", "Momentum", "Risk",
     "Price", "Updated",
 ]
 
 score_cols = [
-    "Sector", "Symbol", "Name", "Buy Score", "Rating",
+    "Sector", "Symbol", "Name", "Buy Score", "Rating", "Score Mode", "Data Coverage %",
     "Valuation", "Growth", "Profit", "Momentum", "Risk",
     "PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
     "Tech Score", "Comm Score", "Updated",
 ]
 
 technical_cols = [
-    "Sector", "Symbol", "Name", "Price", "Market Cap",
+    "Sector", "Symbol", "Name", "Score Mode", "Data Coverage %", "Price", "Market Cap",
     "RSI(14)", "Exhaustion", "vs 50MA (%)", "vs 200MA (%)",
     "MACD", "BB Position", "ROC(10d)", "Vol 20d", "Vol 50d", "Updated",
 ]
@@ -631,6 +633,15 @@ if "Rating" in display_df.columns:
     all_ratings = ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
     rating_filter = st.multiselect("Filter by Rating", all_ratings, default=all_ratings, key="rating_filter")
 
+# Score mode filter
+score_mode_filter = []
+if "Score Mode" in display_df.columns:
+    all_modes = sorted(display_df["Score Mode"].dropna().unique().tolist())
+    if all_modes:
+        score_mode_filter = st.multiselect(
+            "Filter by Score Mode", all_modes, default=all_modes, key="score_mode_filter"
+        )
+
 # Advanced numeric filters
 numeric_filters = {}
 with st.expander("Advanced Filters", expanded=False):
@@ -643,6 +654,7 @@ with st.expander("Advanced Filters", expanded=False):
         "Exhaustion": "Exhaustion",
         "Technical Score": "Tech Score",
         "Commentary Score": "Comm Score",
+        "Data Coverage %": "Data Coverage %",
         "Valuation Score": "Valuation",
         "Growth Score": "Growth",
         "Profit Score": "Profit",
@@ -689,6 +701,9 @@ if sector_filter and "Sector" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Sector"].isin(sector_filter)].copy()
 if rating_filter and "Rating" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Rating"].isin(rating_filter)].copy()
+if score_mode_filter and "Score Mode" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Score Mode"].isin(score_mode_filter)].copy()
+
 if numeric_filters:
     for col, (min_val, max_val) in numeric_filters.items():
         if col not in filtered_df.columns:
@@ -773,6 +788,12 @@ def _cell_style(val, col):
         if val and val > 30: return "color:#69db7c;font-weight:bold"
         elif val and val > 15: return "color:#69db7c"
         elif val and val < -10: return "color:#ff6b6b"
+    elif col == "Data Coverage %":
+        if val is None or (isinstance(val, float) and val != val):
+            return ""
+        if val < 60: return "color:#ff6b6b;font-weight:bold"
+        elif val < 80: return "color:#ffa94d"
+        return "color:#69db7c"
     elif col == "Beta":
         if val and val > 2.0: return "color:#ff6b6b;font-weight:bold"
         elif val and val > 1.5: return "color:#ffa94d"
@@ -798,7 +819,7 @@ def _fmt(val, col):
         return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Trailing P/E", "Fwd PE", "PEG", "Beta", "RSI(14)"):
         return f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Analyst Est Growth %", "Target Upside %", "vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
+    if col in ("Analyst Est Growth %", "Target Upside %", "vs 50MA (%)", "vs 200MA (%)", "ROC(10d)", "Data Coverage %"):
         return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
     if col in ("Buy Score", "Tech Score", "Comm Score"):
         return str(int(val)) if isinstance(val, (int, float)) else str(val)
@@ -814,7 +835,7 @@ def _fmt(val, col):
 # ---- COMPARE SELECTED ----
 if compare_symbols:
     compare_cols = [
-        "Symbol", "Name", "Rating", "Buy Score",
+        "Symbol", "Name", "Rating", "Score Mode", "Data Coverage %", "Buy Score",
         "Price", "Market Cap", "Analyst Est Growth %", "Target Upside %",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
     ]
@@ -910,6 +931,9 @@ if len(filtered_df) > 0:
                 buy_score_text = _fmt(buy, "Buy Score")
                 price_text = _fmt(row.get("Price"), "Price")
                 market_cap_text = _fmt_market_cap(row.get("Market Cap"))
+                score_mode = row.get("Score Mode") or "—"
+                coverage_text = _fmt(row.get("Data Coverage %"), "Data Coverage %")
+
 
                 if symbol:
                     compare_col, remove_col = st.columns([1, 1])
@@ -971,6 +995,8 @@ if len(filtered_df) > 0:
                         </div>
                         <div class="card-meta">
                             <span>Rating: <strong>{rating}</strong></span>
+                            <span>Mode: <strong>{score_mode}</strong></span>
+                            <span>Coverage: {coverage_text}</span>
                             <span>Price: {price_text}</span>
                             <span>Mkt Cap: {market_cap_text}</span>
                         </div>
@@ -1332,6 +1358,17 @@ if selected_symbol:
         with mcol11:
             st.metric("RSI(14)", f"{row.get('rsi_14', 'N/A')}")
 
+        score_meta_cols = st.columns(2)
+        with score_meta_cols[0]:
+            mode_label = row.get("score_mode") or "N/A"
+            st.metric("Score Mode", mode_label)
+        with score_meta_cols[1]:
+            coverage_val = row.get("data_coverage")
+            if coverage_val is None or (isinstance(coverage_val, float) and coverage_val != coverage_val):
+                st.metric("Data Coverage", "N/A")
+            else:
+                st.metric("Data Coverage", f"{coverage_val:.1f}%")
+
         st.markdown("#### Scores")
         
         # Big buy score at the top
@@ -1360,9 +1397,13 @@ if selected_symbol:
         ]
         for pcol, (label, key) in zip(pcols, pillar_map):
             with pcol:
-                pv = row.get(key, 0) or 0
-                st.metric(label, f"{pv:.0f}/20")
-                st.progress(pv / 20)
+                pv = row.get(key)
+                if pv is None or (isinstance(pv, float) and pv != pv):
+                    st.metric(label, "N/A")
+                    st.progress(0)
+                else:
+                    st.metric(label, f"{pv:.0f}/20")
+                    st.progress(pv / 20)
 
         # Adjustment Deltas
         st.markdown("**Reality-Check Adjustments**")

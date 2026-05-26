@@ -143,7 +143,7 @@ def sync_ticker(symbol: str) -> bool:
         target_upside = round((target_mean - current_price) / current_price * 100, 1)
 
     # New 5-pillar professional scoring with reality checks
-    buy_score, pillars, adjustments = calculate_buy_score_v2(
+    buy_score, pillars, adjustments, data_coverage, score_mode = calculate_buy_score_v2(
         info=info,
         history=history,
         exhaustion_level=exhaustion.get("exhaustion_level", "None"),
@@ -186,6 +186,8 @@ def sync_ticker(symbol: str) -> bool:
         "commentary_score": comm_score,
         "buy_score": buy_score,
         "rating_band": band,
+        "data_coverage": data_coverage,
+        "score_mode": score_mode,
         "score_valuation": pillars["valuation"],
         "score_growth": pillars["growth"],
         "score_profitability": pillars["profitability"],
@@ -212,11 +214,16 @@ def sync_ticker(symbol: str) -> bool:
             clean_metrics[k] = v
 
     upsert_metrics(symbol, clean_metrics)
+
+    def _fmt_pillar(value):
+        return f"{value:.0f}" if isinstance(value, (int, float)) else "NA"
+
     logger.info(
         f"Synced {symbol}: Buy={buy_score} ({band}), "
-        f"V={pillars['valuation']:.0f} G={pillars['growth']:.0f} P={pillars['profitability']:.0f} "
-        f"M={pillars['momentum']:.0f} R={pillars['risk']:.0f} | "
-        f"adj={sum(adjustments.values()):+.0f}"
+        f"V={_fmt_pillar(pillars.get('valuation'))} G={_fmt_pillar(pillars.get('growth'))} "
+        f"P={_fmt_pillar(pillars.get('profitability'))} M={_fmt_pillar(pillars.get('momentum'))} "
+        f"R={_fmt_pillar(pillars.get('risk'))} | "
+        f"adj={sum(adjustments.values()):+.0f} mode={score_mode} coverage={data_coverage:.0f}%"
     )
     return True
 

@@ -19,6 +19,29 @@ def _has(val) -> bool:
     return True
 
 
+def _normalize_pillar(earned: float, possible: float):
+    if possible <= 0:
+        return None
+    return round(_clip((earned / possible) * 20, 0, 20), 1)
+
+
+def _normalize_total(earned: float, possible: float) -> float:
+    if possible <= 0:
+        return 0.0
+    return _clip((earned / possible) * 100, 0, 100)
+
+
+def _is_non_equity(info: Dict) -> bool:
+    quote_type = (info.get("quoteType") or "").upper()
+    if quote_type in {"ETF", "MUTUALFUND", "INDEX", "CRYPTOCURRENCY", "CURRENCY"}:
+        return True
+    country = (info.get("country") or "").strip().upper()
+    if country and country not in {"UNITED STATES", "US", "USA"}:
+        return True
+    return False
+
+
+
 # =============================================================================
 # 5-PILLAR PROFESSIONAL SCORING MODEL
 # Inspired by: Seeking Alpha Quant, Goldman ActiveBeta, Zacks, CFRA
@@ -26,12 +49,13 @@ def _has(val) -> bool:
 # =============================================================================
 
 
-def score_valuation(info: Dict) -> float:
+def score_valuation(info: Dict) -> Tuple[float, float]:
     """
     Valuation Pillar (0-20 pts)
-    Key insight from pros: Valuation is RELATIVE to growth + sector context.
+    Returns (points_earned, points_possible).
     """
-    pts = 0.0
+    earned = 0.0
+    possible = 0.0
     peg = info.get("pegRatio")
     fwd_pe = info.get("forwardPE")
     trail_pe = info.get("trailingPE")
@@ -40,81 +64,79 @@ def score_valuation(info: Dict) -> float:
 
     # 1. PEG ratio (0-7 pts) — most widely accepted growth-adjusted valuation
     if _has(peg) and peg > 0:
+        possible += 7
         if peg < 1.0:
-            pts += 7
+            earned += 7
         elif peg < 1.5:
-            pts += 5
+            earned += 5
         elif peg < 2.0:
-            pts += 3
+            earned += 3
         elif peg < 3.0:
-            pts += 1
-    else:
-        pts += 3  # neutral if unavailable
+            earned += 1
 
     # 2. Forward PE vs Earnings Growth (proper PEG, 0-5 pts)
     if _has(fwd_pe) and _has(earnings_growth) and earnings_growth > 0:
+        possible += 5
         proper_peg = fwd_pe / (earnings_growth * 100)
         if proper_peg < 1.0:
-            pts += 5
+            earned += 5
         elif proper_peg < 1.5:
-            pts += 3
+            earned += 3
         elif proper_peg < 2.0:
-            pts += 1
+            earned += 1
     elif _has(fwd_pe) and _has(trail_pe) and trail_pe > 0:
-        # Fallback: forward discount implies growth even if growth not reported
+        possible += 5
         pe_discount = (trail_pe - fwd_pe) / trail_pe
         if pe_discount > 0.30:
-            pts += 3
+            earned += 3
         elif pe_discount > 0.15:
-            pts += 2
+            earned += 2
         elif pe_discount > 0:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 3. Absolute Forward PE sanity check (0-4 pts)
     if _has(fwd_pe):
+        possible += 4
         if fwd_pe < 15:
-            pts += 4
+            earned += 4
         elif fwd_pe < 25:
-            pts += 2
+            earned += 2
         elif fwd_pe < 40:
-            pts += 1
+            earned += 1
         else:
-            pts -= 1  # penalty for very high absolute PE
-    else:
-        pts += 2  # neutral
+            earned -= 1  # penalty for very high absolute PE
 
     # 4. Price-to-Book (0-2 pts) — prevents PEG-only blindness
     if _has(pb):
+        possible += 2
         if pb < 2:
-            pts += 2
+            earned += 2
         elif pb < 5:
-            pts += 1
+            earned += 1
         elif pb > 15:
-            pts -= 1
-    else:
-        pts += 1  # neutral
+            earned -= 1
 
     # 5. PE expansion/contraction trend (0-2 pts)
     if _has(trail_pe) and _has(fwd_pe) and trail_pe > 0:
+        possible += 2
         pe_discount = (trail_pe - fwd_pe) / trail_pe
         if pe_discount > 0.30:
-            pts += 2
+            earned += 2
         elif pe_discount > 0.15:
-            pts += 1
+            earned += 1
         elif pe_discount < -0.10:  # PE expanding = getting more expensive
-            pts -= 1
+            earned -= 1
 
-    return _clip(pts, 0, 20)
+    return earned, possible
 
 
-def score_growth(info: Dict) -> float:
+def score_growth(info: Dict) -> Tuple[float, float]:
     """
     Growth Pillar (0-20 pts)
-    Key insight from Zacks: Earnings estimate revisions + growth trajectory
+    Returns (points_earned, points_possible).
     """
-    pts = 0.0
+    earned = 0.0
+    possible = 0.0
     earnings_growth = info.get("earningsGrowth")
     revenue_growth = info.get("revenueGrowth")
     rec_mean = info.get("recommendationMean")
@@ -123,71 +145,79 @@ def score_growth(info: Dict) -> float:
 
     # 1. Earnings growth (0-5 pts) — the "G" in PEG
     if _has(earnings_growth):
+        possible += 5
         eg = earnings_growth * 100  # convert decimal to pct
         if eg > 30:
-            pts += 5
+            earned += 5
         elif eg > 15:
-            pts += 3
+            earned += 3
         elif eg > 5:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 2. Revenue growth (0-4 pts)
     if _has(revenue_growth):
+        possible += 4
         rg = revenue_growth * 100
         if rg > 20:
-            pts += 4
+            earned += 4
         elif rg > 10:
-            pts += 2
+            earned += 2
         elif rg > 0:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 3. Analyst conviction (estimate revision proxy) (0-5 pts)
     # Zacks proved this is the #1 predictive factor
+    rec_key = (info.get("recommendationKey") or "").lower()
     if _has(rec_mean):
+        possible += 5
         if rec_mean <= 1.5:
-            pts += 5  # Strong Buy consensus
+            earned += 5  # Strong Buy consensus
         elif rec_mean <= 2.0:
-            pts += 3  # Buy
+            earned += 3  # Buy
         elif rec_mean <= 2.5:
-            pts += 1  # Hold
+            earned += 1  # Hold
         else:
-            pts += 0  # Weak/Sell
-    elif info.get("recommendationKey", "").lower() in ("buy", "strong_buy"):
-        pts += 3  # fallback
-    else:
-        pts += 1  # neutral
+            earned += 0  # Weak/Sell
+    elif rec_key:
+        possible += 5
+        if rec_key in ("buy", "strong_buy"):
+            earned += 3
+        elif rec_key in ("hold", "neutral"):
+            earned += 1
+        else:
+            earned += 0
 
     # 4. Forward PE < Trailing PE = earnings trajectory improving (0-2 pts)
-    if _has(trail_pe) and _has(fwd_pe) and fwd_pe < trail_pe:
-        pts += 2
+    if _has(trail_pe) and _has(fwd_pe):
+        possible += 2
+        if fwd_pe < trail_pe:
+            earned += 2
 
     # 5. Growth consistency bonus (0-2 pts)
     if _has(earnings_growth) and _has(revenue_growth):
+        possible += 2
         if earnings_growth > 0 and revenue_growth > 0:
-            pts += 2
+            earned += 2
         elif earnings_growth < 0 and revenue_growth < 0:
-            pts -= 1  # both declining
+            earned -= 1  # both declining
 
     # 6. Earnings quarterly growth acceleration (0-2 pts)
     eqg = info.get("earningsQuarterlyGrowth")
     if _has(eqg) and _has(earnings_growth):
+        possible += 2
         if eqg > earnings_growth:
-            pts += 2  # quarterly accelerating vs annual
+            earned += 2  # quarterly accelerating vs annual
 
-    return _clip(pts, 0, 20)
+    return earned, possible
 
 
-def score_profitability(info: Dict) -> float:
+def score_profitability(info: Dict) -> Tuple[float, float]:
     """
     Profitability Pillar (0-20 pts)
-    Key insight from Seeking Alpha / Goldman Quality factor: high-quality
-    companies compound capital better and are more resilient.
+    Returns (points_earned, points_possible).
     """
-    pts = 0.0
+    earned = 0.0
+    possible = 0.0
     roe = info.get("returnOnEquity")
     gross_margin = info.get("grossMargins")
     op_margin = info.get("operatingMargins")
@@ -197,63 +227,58 @@ def score_profitability(info: Dict) -> float:
 
     # 1. ROE (0-5 pts) — Buffett's favorite metric
     if _has(roe):
+        possible += 5
         roe_pct = roe * 100
         if roe_pct > 25:
-            pts += 5
+            earned += 5
         elif roe_pct > 15:
-            pts += 3
+            earned += 3
         elif roe_pct > 10:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 2. Gross margin (0-4 pts) — pricing power
     if _has(gross_margin):
+        possible += 4
         gm = gross_margin * 100
         if gm > 40:
-            pts += 4
+            earned += 4
         elif gm > 30:
-            pts += 2
+            earned += 2
         elif gm > 20:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 3. Operating margin (0-4 pts) — operational efficiency
     if _has(op_margin):
+        possible += 4
         om = op_margin * 100
         if om > 20:
-            pts += 4
+            earned += 4
         elif om > 10:
-            pts += 2
+            earned += 2
         elif om > 5:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 4. FCF margin (0-4 pts) — cash generation quality
     if _has(fcf) and _has(revenue) and revenue > 0:
+        possible += 4
         fcf_margin = (fcf / revenue) * 100
         if fcf_margin > 15:
-            pts += 4
+            earned += 4
         elif fcf_margin > 10:
-            pts += 2
+            earned += 2
         elif fcf_margin > 5:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 5. Profit margin (0-3 pts)
     if _has(profit_margin):
+        possible += 3
         pm = profit_margin * 100
         if pm > 15:
-            pts += 3
+            earned += 3
         elif pm > 10:
-            pts += 1
-    else:
-        pts += 1  # neutral
+            earned += 1
 
-    return _clip(pts, 0, 20)
+    return earned, possible
 
 
 def score_momentum(
@@ -264,89 +289,86 @@ def score_momentum(
     volume_ratio: float,
     week_52_change: float,
     rsi: float,
-) -> float:
+) -> Tuple[float, float]:
     """
     Momentum Pillar (0-20 pts)
-    Key insight from Goldman ActiveBeta: momentum persists. But we also
-    reward healthy (not overheated) momentum with volume confirmation.
+    Returns (points_earned, points_possible).
     """
-    pts = 0.0
+    earned = 0.0
+    possible = 0.0
 
     # 1. Price vs 50MA (0-5 pts) — trend strength
     if _has(price_vs_50ma):
+        possible += 5
         if 5 <= price_vs_50ma <= 20:
-            pts += 5  # healthy uptrend
+            earned += 5  # healthy uptrend
         elif 0 <= price_vs_50ma < 5:
-            pts += 3  # flat to slightly positive
+            earned += 3  # flat to slightly positive
         elif 20 < price_vs_50ma <= 35:
-            pts += 3  # strong but getting extended
+            earned += 3  # strong but getting extended
         elif price_vs_50ma > 35:
-            pts += 1  # very extended, parabolic risk
+            earned += 1  # very extended, parabolic risk
         elif -10 <= price_vs_50ma < 0:
-            pts += 1  # mild pullback within uptrend
+            earned += 1  # mild pullback within uptrend
         else:
-            pts += 0  # significant downtrend
-    else:
-        pts += 2  # neutral
+            earned += 0  # significant downtrend
 
     # 2. Price vs 200MA (0-3 pts) — long-term trend health
     if _has(price_vs_200ma):
+        possible += 3
         if price_vs_200ma > 20:
-            pts += 3
+            earned += 3
         elif price_vs_200ma > 0:
-            pts += 2
+            earned += 2
         elif price_vs_200ma > -10:
-            pts += 1
-    else:
-        pts += 2  # neutral
+            earned += 1
 
     # 3. 52-week return (0-4 pts) — 12m momentum (Goldman uses 11m)
     if _has(week_52_change):
+        possible += 4
         w52 = week_52_change * 100
         if w52 > 50:
-            pts += 4
+            earned += 4
         elif w52 > 20:
-            pts += 3
+            earned += 3
         elif w52 > 0:
-            pts += 1
+            earned += 1
         elif w52 > -20:
-            pts += 0
+            earned += 0
         else:
-            pts -= 2  # severe 12m decline = broken momentum
-    else:
-        pts += 2  # neutral
+            earned -= 2  # severe 12m decline = broken momentum
 
     # 4. Volume confirmation (0-3 pts)
     if _has(volume_ratio):
+        possible += 3
         if volume_ratio > 1.2:
-            pts += 3
+            earned += 3
         elif volume_ratio > 1.0:
-            pts += 2
+            earned += 2
         elif volume_ratio > 0.9:
-            pts += 1
-    else:
-        pts += 1  # neutral
+            earned += 1
 
     # 5. MACD (0-3 pts)
-    if macd_signal in ("Bullish", "Bullish Crossover"):
-        pts += 3
-    elif macd_signal == "Bearish Crossover":
-        pts += 0
-    else:
-        pts += 1  # neutral / bearish
+    if macd_signal:
+        possible += 3
+        if macd_signal in ("Bullish", "Bullish Crossover"):
+            earned += 3
+        elif macd_signal == "Bearish Crossover":
+            earned += 0
+        else:
+            earned += 1  # neutral / bearish
 
     # 6. RSI — healthy momentum zone (50-70) is ideal (0-2 pts)
     if _has(rsi):
+        possible += 2
         if 50 <= rsi <= 70:
-            pts += 2  # healthy momentum
+            earned += 2  # healthy momentum
         elif 40 <= rsi < 50 or 70 < rsi <= 75:
-            pts += 1  # mild deviation
+            earned += 1  # mild deviation
         elif rsi > 80 or rsi < 30:
-            pts -= 1  # extreme overbought/oversold
-    else:
-        pts += 1  # neutral
+            earned -= 1  # extreme overbought/oversold
 
-    return _clip(pts, 0, 20)
+    return earned, possible
 
 
 def score_risk(
@@ -355,80 +377,84 @@ def score_risk(
     week_52_high: float,
     week_52_low: float,
     current_price: float,
-) -> float:
+) -> Tuple[float, float]:
     """
     Risk / Stability Pillar (0-20 pts)
-    Key insight: Low volatility + strong balance sheet + no exhaustion = hold.
+    Returns (points_earned, points_possible).
     """
-    pts = 0.0
+    earned = 0.0
+    possible = 0.0
     beta = info.get("beta")
     debt_equity = info.get("debtToEquity")
     current_ratio = info.get("currentRatio")
 
     # 1. Beta (0-5 pts) — volatility risk
     if _has(beta):
+        possible += 5
         if 0.8 <= beta <= 1.2:
-            pts += 5  # market-like, predictable
+            earned += 5  # market-like, predictable
         elif (0.5 <= beta < 0.8) or (1.2 < beta <= 1.5):
-            pts += 3  # slightly defensive or aggressive
+            earned += 3  # slightly defensive or aggressive
         elif 1.5 < beta <= 2.0:
-            pts += 1  # high volatility
+            earned += 1  # high volatility
         elif beta > 2.0:
-            pts += 0  # extreme volatility
+            earned += 0  # extreme volatility
         elif beta < 0.5:
-            pts += 2  # very defensive
-    else:
-        pts += 3  # neutral
+            earned += 2  # very defensive
 
     # 2. Debt / Equity (0-4 pts) — balance sheet strength
     if _has(debt_equity):
+        possible += 4
         if debt_equity < 30:
-            pts += 4
+            earned += 4
         elif debt_equity < 60:
-            pts += 2
+            earned += 2
         elif debt_equity < 100:
-            pts += 1
+            earned += 1
         else:
-            pts += 0  # highly leveraged
-    else:
-        pts += 2  # neutral
+            earned += 0  # highly leveraged
 
     # 3. Current ratio (0-3 pts) — short-term liquidity
     if _has(current_ratio):
+        possible += 3
         if current_ratio > 2.0:
-            pts += 3
+            earned += 3
         elif current_ratio > 1.5:
-            pts += 2
+            earned += 2
         elif current_ratio > 1.0:
-            pts += 1
+            earned += 1
         else:
-            pts += 0  # potential liquidity issues
-    else:
-        pts += 2  # neutral
+            earned += 0  # potential liquidity issues
 
     # 4. Exhaustion level (0-5 pts) — multi-factor price stress signal
-    exhaustion_pts = {"None": 5, "Building": 3, "High": 1, "Extreme": -2}
-    pts += exhaustion_pts.get(exhaustion_level, 2)
+    if exhaustion_level:
+        possible += 5
+        exhaustion_pts = {"None": 5, "Building": 3, "High": 1, "Extreme": -2}
+        earned += exhaustion_pts.get(exhaustion_level, 2)
 
     # 5. 52-week range width = volatility proxy (0-2 pts)
     # Very wide ranges = high uncertainty = penalty
     if _has(week_52_high) and _has(week_52_low) and week_52_low > 0:
+        possible += 2
         range_width = (week_52_high - week_52_low) / week_52_low * 100
         if range_width > 400:
-            pts -= 1  # crypto-like volatility
+            earned -= 1  # crypto-like volatility
         elif range_width < 50:
-            pts += 1  # very stable
+            earned += 1  # very stable
     elif _has(current_price) and _has(week_52_low) and week_52_low > 0:
+        possible += 2
         range_width = (current_price - week_52_low) / week_52_low * 100
         if range_width > 300:
-            pts -= 1
+            earned -= 1
 
     # 6. Quick ratio bonus if available (0-1 pt)
     qr = info.get("quickRatio")
-    if _has(qr) and qr > 1.0:
-        pts += 1
+    if _has(qr):
+        possible += 1
+        if qr > 1.0:
+            earned += 1
 
-    return _clip(pts, 0, 20)
+    return earned, possible
 
 
 # =============================================================================
@@ -679,52 +705,77 @@ def calculate_buy_score_v2(
     technical_score: int = 0,
     commentary_score: int = 0,
     target_upside: float = None,
-) -> Tuple[int, Dict[str, float], Dict[str, float]]:
+) -> Tuple[int, Dict[str, float], Dict[str, float], float, str]:
     """
     Professional 5-pillar composite Buy Score (0-100) with reality checks.
 
     Returns:
-        (buy_score, pillar_scores, adjustments)
-        pillar_scores = {"valuation": x, "growth": x, "profitability": x,
-                         "momentum": x, "risk": x}
-        adjustments = {"technical_crosscheck": x, "commentary_crosscheck": x,
-                       "target_reality": x, "earnings_surprise": x, "coverage_quality": x}
+        (buy_score, pillar_scores, adjustments, data_coverage_pct, score_mode)
     """
-    val = score_valuation(info)
-    growth = score_growth(info)
-    prof = score_profitability(info)
-    mom = score_momentum(
+    val_earned, val_possible = score_valuation(info)
+    growth_earned, growth_possible = score_growth(info)
+    prof_earned, prof_possible = score_profitability(info)
+    mom_earned, mom_possible = score_momentum(
         history, price_vs_50ma, price_vs_200ma, macd_signal,
         volume_ratio, week_52_change, rsi,
     )
-    risk = score_risk(
+    risk_earned, risk_possible = score_risk(
         info, exhaustion_level,
         info.get("fiftyTwoWeekHigh"), info.get("fiftyTwoWeekLow"),
         info.get("currentPrice") or info.get("regularMarketPrice"),
     )
 
-    base = val + growth + prof + mom + risk
-
-    # Apply reality-check adjustments
-    adj_total, adjustments = _reality_check_adjustments(
-        base, technical_score, commentary_score, target_upside, info, exhaustion_level
-    )
-
-    total = base + adj_total
-    total = _clip(total, 0, 100)
+    total_earned = val_earned + growth_earned + prof_earned + mom_earned + risk_earned
+    total_possible = val_possible + growth_possible + prof_possible + mom_possible + risk_possible
+    data_coverage = round(total_possible, 1) if total_possible else 0.0
 
     pillars = {
-        "valuation": round(val, 1),
-        "growth": round(growth, 1),
-        "profitability": round(prof, 1),
-        "momentum": round(mom, 1),
-        "risk": round(risk, 1),
+        "valuation": _normalize_pillar(val_earned, val_possible),
+        "growth": _normalize_pillar(growth_earned, growth_possible),
+        "profitability": _normalize_pillar(prof_earned, prof_possible),
+        "momentum": _normalize_pillar(mom_earned, mom_possible),
+        "risk": _normalize_pillar(risk_earned, risk_possible),
     }
+
+    score_mode = "Equity"
+    if _is_non_equity(info) or data_coverage < 60:
+        score_mode = "Technical"
+
+    if score_mode == "Technical":
+        tech_earned = 0.0
+        tech_possible = 0.0
+        if mom_possible > 0:
+            tech_earned += mom_earned
+            tech_possible += mom_possible
+        if risk_possible > 0:
+            tech_earned += risk_earned
+            tech_possible += risk_possible
+        base = _normalize_total(tech_earned, tech_possible)
+        adjustments = {
+            "technical_crosscheck": 0.0,
+            "commentary_crosscheck": 0.0,
+            "target_reality": 0.0,
+            "earnings_surprise": 0.0,
+            "coverage_quality": 0.0,
+            "peg_premium": 0.0,
+            "growth_trajectory": 0.0,
+            "pe_trajectory": 0.0,
+            "exhaustion_penalty": 0.0,
+        }
+        adj_total = 0.0
+    else:
+        base = _normalize_total(total_earned, total_possible)
+        # Apply reality-check adjustments
+        adj_total, adjustments = _reality_check_adjustments(
+            base, technical_score, commentary_score, target_upside, info, exhaustion_level
+        )
+
+    total = _clip(base + adj_total, 0, 100)
 
     # Store adjustment values rounded
     adj_display = {k: round(v, 1) for k, v in adjustments.items()}
 
-    return int(round(total)), pillars, adj_display
+    return int(round(total)), pillars, adj_display, data_coverage, score_mode
 
 
 # Legacy wrapper for backward compatibility
@@ -773,7 +824,7 @@ def calculate_buy_score(
         "fiftyTwoWeekLow": week_52_low,
     }
     history = {"Close": None, "Volume": None}
-    score, _, _ = calculate_buy_score_v2(
+    score, _, _, _, _ = calculate_buy_score_v2(
         info=info,
         history=history,
         exhaustion_level=exhaustion_level,
