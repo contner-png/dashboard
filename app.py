@@ -636,12 +636,16 @@ numeric_filters = {}
 with st.expander("Advanced Filters", expanded=False):
     filter_options = {
         "PEG Ratio": "PEG",
-        "Trailing P/E": "Trailing P/E",
-        "Forward P/E": "Fwd PE",
+        "P/E (Trailing)": "Trailing P/E",
+        "P/E (Forward)": "Fwd PE",
+        "Growth Rate %": "Analyst Est Growth %",
+        "RSI (14)": "RSI(14)",
+        "Exhaustion": "Exhaustion",
+        "Technical Score": "Tech Score",
+        "Commentary Score": "Comm Score",
         "Market Cap": "Market Cap",
         "Buy Score": "Buy Score",
         "Target Upside %": "Target Upside %",
-        "Analyst Est Growth %": "Analyst Est Growth %",
     }
     active_filters = st.multiselect("Filter metrics", list(filter_options.keys()))
     for label in active_filters:
