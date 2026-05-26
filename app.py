@@ -213,6 +213,31 @@ def _format_large_number(val):
     return f"${val:,.0f}"
 
 
+def _numeric_threshold_filter(label: str, series: pd.Series, key: str):
+    clean = pd.to_numeric(series, errors="coerce").dropna()
+    if clean.empty:
+        return None
+    min_val = float(clean.min())
+    max_val = float(clean.max())
+    if min_val == max_val:
+        st.caption(f"{label}: {min_val:.2f}")
+        return (min_val, max_val)
+    st.markdown(f"**{label}**")
+    st.caption(f"Range: {min_val:.2f} — {max_val:.2f}")
+    min_col, max_col = st.columns(2)
+    with min_col:
+        use_min = st.checkbox("Min", key=f"{key}_min_on")
+        min_input = st.number_input("Min value", min_value=min_val, max_value=max_val, value=min_val, key=f"{key}_min_val")
+    with max_col:
+        use_max = st.checkbox("Max", key=f"{key}_max_on")
+        max_input = st.number_input("Max value", min_value=min_val, max_value=max_val, value=max_val, key=f"{key}_max_val")
+    min_output = min_input if use_min else None
+    max_output = max_input if use_max else None
+    if min_output is None and max_output is None:
+        return None
+    return (min_output, max_output)
+
+
 
 # Initialize database
 init_db()
@@ -596,15 +621,37 @@ with sort_col1:
 with sort_col2:
     sort_asc = st.radio("Order", ["↓ Descending", "↑ Ascending"], index=0)
 with filter_col:
-    all_sectors = ["All"] + sorted(display_df["Sector"].dropna().unique().tolist()) if "Sector" in display_df.columns else ["All"]
-    sector_filter = st.selectbox("Filter by Sector", all_sectors, index=0)
+    all_sectors = sorted(display_df["Sector"].dropna().unique().tolist()) if "Sector" in display_df.columns else []
+    sector_filter = st.multiselect("Filter by Sector", all_sectors, default=all_sectors)
 
 # Rating band filter
-rating_filter = "All"
+rating_filter = []
+all_ratings = []
 if "Rating" in display_df.columns:
-    rating_col = st.columns([1, 1])[1] if 'rating_col' not in locals() else None
-    all_ratings = ["All"] + ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
-    rating_filter = st.selectbox("Filter by Rating", all_ratings, index=0, key="rating_filter")
+    all_ratings = ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
+    rating_filter = st.multiselect("Filter by Rating", all_ratings, default=all_ratings, key="rating_filter")
+
+# Advanced numeric filters
+numeric_filters = {}
+with st.expander("Advanced Filters", expanded=False):
+    filter_options = {
+        "PEG Ratio": "PEG",
+        "Trailing P/E": "Trailing P/E",
+        "Forward P/E": "Fwd PE",
+        "Market Cap": "Market Cap",
+        "Buy Score": "Buy Score",
+        "Target Upside %": "Target Upside %",
+        "Analyst Est Growth %": "Analyst Est Growth %",
+    }
+    active_filters = st.multiselect("Filter metrics", list(filter_options.keys()))
+    for label in active_filters:
+        col = filter_options[label]
+        if col not in display_df.columns:
+            continue
+        range_vals = _numeric_threshold_filter(label, display_df[col], key=f"filter_{col}")
+        if range_vals:
+            numeric_filters[col] = range_vals
+
 
 
 if "compare_selected" not in st.session_state:
@@ -629,10 +676,20 @@ if st.button("Clear compare", key="clear_compare"):
 filtered_df = display_df.copy()
 if show_only_holdings and "is_held" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["is_held"] == 1].copy()
-if sector_filter != "All" and "Sector" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df["Sector"] == sector_filter].copy()
-if rating_filter != "All" and "Rating" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df["Rating"] == rating_filter].copy()
+if sector_filter and "Sector" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Sector"].isin(sector_filter)].copy()
+if rating_filter and "Rating" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Rating"].isin(rating_filter)].copy()
+if numeric_filters:
+    for col, (min_val, max_val) in numeric_filters.items():
+        if col not in filtered_df.columns:
+            continue
+        series = pd.to_numeric(filtered_df[col], errors="coerce")
+        if min_val is not None:
+            filtered_df = filtered_df[series >= min_val].copy()
+            series = pd.to_numeric(filtered_df[col], errors="coerce")
+        if max_val is not None:
+            filtered_df = filtered_df[series <= max_val].copy()
 
 # Apply sort — only pin held tickers to top when "Show only my holdings" is active
 ascending = sort_asc == "↑ Ascending"
