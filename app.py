@@ -907,12 +907,22 @@ if len(filtered_df) > 0:
                 market_cap_text = _fmt_market_cap(row.get("Market Cap"))
 
                 if symbol:
-                    compare_checked = symbol in st.session_state.compare_selected
-                    compare_val = st.checkbox("Compare", value=compare_checked, key=f"compare_{symbol}")
+                    compare_col, remove_col = st.columns([1, 1])
+                    with compare_col:
+                        compare_checked = symbol in st.session_state.compare_selected
+                        compare_val = st.checkbox("Compare", value=compare_checked, key=f"compare_{symbol}")
+                    with remove_col:
+                        remove_clicked = st.button("Remove", key=f"remove_{symbol}", use_container_width=True)
                     if compare_val:
                         st.session_state.compare_selected.add(symbol)
                     else:
                         st.session_state.compare_selected.discard(symbol)
+                    if remove_clicked:
+                        remove_ticker(symbol)
+                        st.session_state.compare_selected.discard(symbol)
+                        if "pending_holdings" in st.session_state:
+                            st.session_state.pending_holdings.discard(symbol)
+                        st.rerun()
 
 
                 score_color = "#1a5f1a" if buy and buy >= 80 else "#2e8b2e" if buy and buy >= 65 else "#daa520" if buy and buy >= 45 else "#cd853f" if buy and buy >= 30 else "#b22222"
@@ -1182,7 +1192,18 @@ with col5:
 st.markdown("---")
 st.subheader("Detailed View")
 
-selected_symbol = st.selectbox("Select ticker for charts", df["symbol"].tolist())
+chart_cols = st.columns([3, 1])
+with chart_cols[0]:
+    selected_symbol = st.selectbox("Select ticker for charts", df["symbol"].tolist(), key="chart_symbol")
+with chart_cols[1]:
+    remove_chart = st.button("Remove ticker", key="remove_chart", use_container_width=True)
+
+if remove_chart and selected_symbol:
+    remove_ticker(selected_symbol)
+    st.session_state.compare_selected.discard(selected_symbol)
+    if "pending_holdings" in st.session_state:
+        st.session_state.pending_holdings.discard(selected_symbol)
+    st.rerun()
 
 if selected_symbol:
     ticker_data = fetch_ticker_data(selected_symbol)
