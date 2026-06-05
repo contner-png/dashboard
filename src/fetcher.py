@@ -3,6 +3,46 @@ import pandas as pd
 from typing import Optional, Dict
 import logging
 
+
+def _sort_stmt_series(series: pd.Series) -> pd.Series:
+    if series is None or series.empty:
+        return series
+    try:
+        if isinstance(series.index[0], (pd.Timestamp, pd.Period)):
+            return series.sort_index(ascending=False)
+    except Exception:
+        pass
+    return series
+
+
+def _extract_stmt_series(stmt: Optional[pd.DataFrame], row_names: list[str]) -> Optional[pd.Series]:
+    if stmt is None or getattr(stmt, "empty", True):
+        return None
+    for name in row_names:
+        if name in stmt.index:
+            series = stmt.loc[name].dropna()
+            if not series.empty:
+                return _sort_stmt_series(series)
+    return None
+
+
+def _extract_latest_value(stmt: Optional[pd.DataFrame], row_names: list[str]):
+    series = _extract_stmt_series(stmt, row_names)
+    if series is None or series.empty:
+        return None
+    return series.iloc[0]
+
+
+def _extract_growth_pct(stmt: Optional[pd.DataFrame], row_names: list[str]) -> Optional[float]:
+    series = _extract_stmt_series(stmt, row_names)
+    if series is None or len(series) < 2:
+        return None
+    latest = series.iloc[0]
+    previous = series.iloc[1]
+    if previous is None or previous == 0 or (isinstance(previous, float) and previous != previous):
+        return None
+    return round(((latest - previous) / abs(previous)) * 100, 1)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -11,12 +51,35 @@ def fetch_ticker_data(symbol: str) -> Optional[Dict]:
     """Fetch all data for a single ticker from Yahoo Finance."""
     try:
         ticker = yf.Ticker(symbol)
-        info = ticker.info
+        info = ticker.info or {}
         hist = ticker.history(period="6mo")
 
         if hist.empty:
             logger.warning(f"No price history for {symbol}")
             return None
+
+        income_stmt = getattr(ticker, "income_stmt", None)
+        if income_stmt is None or getattr(income_stmt, "empty", True):
+            income_stmt = getattr(ticker, "financials", None)
+        cashflow = getattr(ticker, "cashflow", None)
+        if cashflow is None or getattr(cashflow, "empty", True):
+            cashflow = getattr(ticker, "cash_flow", None)
+
+        net_income_rows = [
+            "Net Income",
+            "Net Income Common Stockholders",
+            "Net Income Applicable To Common Shares",
+        ]
+        net_income = _extract_latest_value(income_stmt, net_income_rows)
+        net_income_growth = _extract_growth_pct(income_stmt, net_income_rows)
+        fcf_growth = _extract_growth_pct(cashflow, ["Free Cash Flow"])
+
+        if net_income is not None:
+            info["netIncome"] = float(net_income)
+        if net_income_growth is not None:
+            info["netIncomeGrowth"] = float(net_income_growth)
+        if fcf_growth is not None:
+            info["freeCashflowGrowth"] = float(fcf_growth)
 
         return {
             "info": info,

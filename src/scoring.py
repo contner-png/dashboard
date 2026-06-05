@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from typing import Dict, Tuple
 
@@ -29,6 +30,34 @@ def _normalize_total(earned: float, possible: float) -> float:
     if possible <= 0:
         return 0.0
     return _clip((earned / possible) * 100, 0, 100)
+
+
+def _score_growth_rate(growth_pct: float):
+    if growth_pct is None or (isinstance(growth_pct, float) and growth_pct != growth_pct):
+        return None
+    if growth_pct >= 40:
+        return 20.0
+    if growth_pct >= 25:
+        return 17.0
+    if growth_pct >= 10:
+        return 14.0
+    if growth_pct >= 0:
+        return 10.0
+    if growth_pct >= -10:
+        return 7.0
+    if growth_pct >= -25:
+        return 4.0
+    return 1.0
+
+
+def _score_scale(net_income: float):
+    if net_income is None or (isinstance(net_income, float) and net_income != net_income):
+        return None
+    if net_income <= 0:
+        return 0.0
+    log_val = math.log10(net_income)
+    scaled = (log_val - 7.0) / 4.0 * 20.0
+    return _clip(scaled, 0, 20)
 
 
 def _is_non_equity(info: Dict) -> bool:
@@ -216,8 +245,8 @@ def score_profitability(info: Dict) -> Tuple[float, float]:
     Profitability Pillar (0-20 pts)
     Returns (points_earned, points_possible).
     """
-    earned = 0.0
-    possible = 0.0
+    efficiency_earned = 0.0
+    efficiency_possible = 0.0
     roe = info.get("returnOnEquity")
     gross_margin = info.get("grossMargins")
     op_margin = info.get("operatingMargins")
@@ -227,57 +256,96 @@ def score_profitability(info: Dict) -> Tuple[float, float]:
 
     # 1. ROE (0-5 pts) — Buffett's favorite metric
     if _has(roe):
-        possible += 5
+        efficiency_possible += 5
         roe_pct = roe * 100
         if roe_pct > 25:
-            earned += 5
+            efficiency_earned += 5
         elif roe_pct > 15:
-            earned += 3
+            efficiency_earned += 3
         elif roe_pct > 10:
-            earned += 1
+            efficiency_earned += 1
 
     # 2. Gross margin (0-4 pts) — pricing power
     if _has(gross_margin):
-        possible += 4
+        efficiency_possible += 4
         gm = gross_margin * 100
         if gm > 40:
-            earned += 4
+            efficiency_earned += 4
         elif gm > 30:
-            earned += 2
+            efficiency_earned += 2
         elif gm > 20:
-            earned += 1
+            efficiency_earned += 1
 
     # 3. Operating margin (0-4 pts) — operational efficiency
     if _has(op_margin):
-        possible += 4
+        efficiency_possible += 4
         om = op_margin * 100
         if om > 20:
-            earned += 4
+            efficiency_earned += 4
         elif om > 10:
-            earned += 2
+            efficiency_earned += 2
         elif om > 5:
-            earned += 1
+            efficiency_earned += 1
 
     # 4. FCF margin (0-4 pts) — cash generation quality
     if _has(fcf) and _has(revenue) and revenue > 0:
-        possible += 4
+        efficiency_possible += 4
         fcf_margin = (fcf / revenue) * 100
         if fcf_margin > 15:
-            earned += 4
+            efficiency_earned += 4
         elif fcf_margin > 10:
-            earned += 2
+            efficiency_earned += 2
         elif fcf_margin > 5:
-            earned += 1
+            efficiency_earned += 1
 
     # 5. Profit margin (0-3 pts)
     if _has(profit_margin):
-        possible += 3
+        efficiency_possible += 3
         pm = profit_margin * 100
         if pm > 15:
-            earned += 3
+            efficiency_earned += 3
         elif pm > 10:
-            earned += 1
+            efficiency_earned += 1
 
+    efficiency_score = _normalize_pillar(efficiency_earned, efficiency_possible)
+
+    growth_scores = []
+    net_income_growth = info.get("netIncomeGrowth")
+    fcf_growth = info.get("freeCashflowGrowth")
+    for growth_val in (net_income_growth, fcf_growth):
+        if _has(growth_val):
+            score = _score_growth_rate(growth_val)
+            if score is not None:
+                growth_scores.append(score)
+    growth_score = sum(growth_scores) / len(growth_scores) if growth_scores else None
+
+    net_income = info.get("netIncome") or info.get("netIncomeToCommon") or info.get("netIncomeToCommonStockholders")
+    scale_score = _score_scale(net_income)
+
+    weights = {
+        "efficiency": 0.5,
+        "growth": 0.35,
+        "scale": 0.15,
+    }
+
+    weighted_sum = 0.0
+    weight_total = 0.0
+    if efficiency_score is not None:
+        weighted_sum += efficiency_score * weights["efficiency"]
+        weight_total += weights["efficiency"]
+    if growth_score is not None:
+        weighted_sum += growth_score * weights["growth"]
+        weight_total += weights["growth"]
+    if scale_score is not None:
+        weighted_sum += scale_score * weights["scale"]
+        weight_total += weights["scale"]
+
+    if weight_total <= 0:
+        return 0.0, 0.0
+
+    weighted_score = weighted_sum / weight_total
+    possible = 20 * weight_total
+    earned = weighted_score * weight_total
     return earned, possible
 
 
