@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
-from typing import Optional, Dict
+from datetime import datetime, timezone
+from typing import Optional, Dict, List
 import logging
 
 
@@ -47,6 +48,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def fetch_news(symbol: str, limit: int = 8) -> List[Dict]:
+    """
+    Recent headlines from Yahoo Finance (free). Normalizes both yfinance news
+    shapes (new nested `content` dict and the older flat dict) to:
+        {title, publisher, url, published}
+    Returns [] on any failure — headlines are nice-to-have, never blocking.
+    """
+    try:
+        items = yf.Ticker(symbol).news or []
+    except Exception as e:
+        logger.error(f"Error fetching news for {symbol}: {e}")
+        return []
+
+    news = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content") if isinstance(item.get("content"), dict) else item
+        title = content.get("title")
+        if not title:
+            continue
+
+        url = ""
+        canonical = content.get("canonicalUrl") or content.get("clickThroughUrl")
+        if isinstance(canonical, dict):
+            url = canonical.get("url") or ""
+        url = url or content.get("link") or item.get("link") or ""
+
+        provider = content.get("provider")
+        publisher = provider.get("displayName") if isinstance(provider, dict) else content.get("publisher")
+
+        published = content.get("pubDate") or content.get("displayTime") or ""
+        if not published and content.get("providerPublishTime"):
+            try:
+                published = datetime.fromtimestamp(
+                    int(content["providerPublishTime"]), tz=timezone.utc
+                ).isoformat()
+            except (TypeError, ValueError, OSError):
+                published = ""
+
+        news.append({
+            "title": str(title).strip(),
+            "publisher": str(publisher or "").strip(),
+            "url": str(url),
+            "published": str(published),
+        })
+        if len(news) >= limit:
+            break
+    return news
+
+
 def fetch_history(symbol: str, period: str = "1y") -> Optional[pd.DataFrame]:
     """Price history only — much faster than fetch_ticker_data for charting."""
     try:
@@ -64,7 +116,9 @@ def fetch_ticker_data(symbol: str) -> Optional[Dict]:
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info or {}
-        hist = ticker.history(period="6mo")
+        # 1y gives the 200-day MA enough data (6mo left it permanently NaN)
+        # and supports the research pack's 1y max-drawdown stat.
+        hist = ticker.history(period="1y")
 
         if hist.empty:
             logger.warning(f"No price history for {symbol}")

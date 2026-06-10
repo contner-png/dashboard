@@ -1,0 +1,4 @@
+# Permanent watchlist — one ticker per line ('#' starts a comment).
+# The nightly sync adds any symbol listed here to the dashboard, so editing
+# this file on GitHub is the durable way to add tickers (additions made in
+# the app UI are lost when ephemeral hosting restarts).

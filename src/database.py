@@ -2,6 +2,8 @@ import sqlite3
 import os
 from typing import List, Dict, Optional
 
+import pandas as pd
+
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "stocks.db")
 ENV_DB_PATH = os.environ.get("STOCKS_DB_PATH")
 ENV_DB_DIR = os.environ.get("STOCKS_DB_DIR") or os.environ.get("RENDER_DISK_PATH")
@@ -61,6 +63,29 @@ METRIC_COLUMNS: Dict[str, str] = {
     "adj_growth": "REAL",
     "adj_pe_traj": "REAL",
     "adj_exhaustion": "REAL",
+    "adj_dcf": "REAL",
+    # Tier-2 research pack fundamentals (percent values stored as percentages)
+    "free_cashflow": "REAL",
+    "shares_outstanding": "REAL",
+    "total_cash": "REAL",
+    "total_debt": "REAL",
+    "debt_to_equity": "REAL",
+    "current_ratio": "REAL",
+    "roe": "REAL",
+    "gross_margin": "REAL",
+    "operating_margin": "REAL",
+    "profit_margin": "REAL",
+    "revenue_growth": "REAL",
+    "earnings_growth": "REAL",
+    "recommendation_mean": "REAL",
+    "num_analysts": "INTEGER",
+    "next_earnings": "TEXT",
+    "max_drawdown_1y": "REAL",
+    "dcf_value": "REAL",
+    "dcf_upside": "REAL",
+    "dcf_bull": "REAL",
+    "dcf_bear": "REAL",
+    "dcf_verdict": "TEXT",
     "description": "TEXT",
 }
 
@@ -101,6 +126,18 @@ def init_db():
             is_held INTEGER DEFAULT 0,
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (symbol) REFERENCES tickers(symbol)
+        )
+    """)
+
+    # Daily close cache: filled on every sync. Serves charts and correlation
+    # checks without network calls, and accumulates history for backtesting.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prices (
+            symbol TEXT NOT NULL,
+            date TEXT NOT NULL,
+            close REAL,
+            volume REAL,
+            PRIMARY KEY (symbol, date)
         )
     """)
 
@@ -216,6 +253,48 @@ def upsert_metrics(symbol: str, metrics: Dict):
     cursor.execute(sql, (symbol.upper(), *values))
     conn.commit()
     conn.close()
+
+
+def store_prices(symbol: str, history: pd.DataFrame):
+    """Upsert daily close/volume rows from a yfinance history frame."""
+    if history is None or history.empty or "Close" not in history.columns:
+        return
+    rows = []
+    volumes = history["Volume"] if "Volume" in history.columns else None
+    for idx, close in history["Close"].items():
+        if close is None or close != close:
+            continue
+        date_key = pd.Timestamp(idx).strftime("%Y-%m-%d")
+        vol = None
+        if volumes is not None:
+            v = volumes.get(idx)
+            vol = float(v) if v is not None and v == v else None
+        rows.append((symbol.upper(), date_key, round(float(close), 4), vol))
+    if not rows:
+        return
+    conn = get_conn()
+    conn.executemany(
+        "INSERT OR REPLACE INTO prices (symbol, date, close, volume) VALUES (?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_prices(symbol: str) -> Optional[pd.DataFrame]:
+    """Cached daily history as a DataFrame with Close/Volume (chart-compatible)."""
+    conn = get_conn()
+    df = pd.read_sql_query(
+        "SELECT date, close, volume FROM prices WHERE symbol = ? ORDER BY date",
+        conn,
+        params=(symbol.upper(),),
+    )
+    conn.close()
+    if df.empty:
+        return None
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date").rename(columns={"close": "Close", "volume": "Volume"})
+    return df
 
 
 def get_all_metrics() -> List[Dict]:

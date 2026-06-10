@@ -12,9 +12,11 @@ from src.database import (
     get_stale_tickers,
     get_holdings,
     set_holdings,
+    get_prices,
 )
 from src.sync import add_and_sync, sync_many
-from src.fetcher import fetch_history
+from src.fetcher import fetch_history, fetch_news
+from src.research import dcf_valuation, scenario_cagr, entry_plan, position_plan, build_research_prompt
 from src.ui import (
     inject_css,
     fmt,
@@ -47,9 +49,48 @@ def load_metrics() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+PERIOD_DAYS = {"6mo": 182, "1y": 365, "2y": 730, "5y": 1825}
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def load_history(symbol: str, period: str = "1y"):
-    return fetch_history(symbol, period)
+    """Serve price history from the local cache when it's fresh enough and
+    covers the requested period; otherwise fall back to a network fetch."""
+    days = PERIOD_DAYS.get(period, 365)
+    cached = get_prices(symbol)
+    if cached is not None and len(cached) > 30:
+        age_days = (pd.Timestamp.now() - cached.index.max()).days
+        span_days = (cached.index.max() - cached.index.min()).days
+        if age_days <= 7 and span_days >= days * 0.8:
+            return cached[cached.index >= cached.index.max() - pd.Timedelta(days=days)]
+    fetched = fetch_history(symbol, period)
+    if fetched is not None:
+        return fetched
+    # Network down but we have *something* local — stale beats blank.
+    return cached
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_news(symbol: str):
+    return fetch_news(symbol)
+
+
+def render_news_list(news: list):
+    if not news:
+        st.caption("No recent headlines available right now.")
+        return
+    for item in news:
+        date_label = ""
+        published = pd.to_datetime(item.get("published"), errors="coerce", utc=True)
+        if pd.notna(published):
+            date_label = f" · {published.strftime('%b %d')}"
+        title = item.get("title", "")
+        url = item.get("url", "")
+        source = item.get("publisher") or "Yahoo Finance"
+        if url:
+            st.markdown(f"- [{title}]({url}) — {source}{date_label}")
+        else:
+            st.markdown(f"- {title} — {source}{date_label}")
 
 
 def invalidate_data():
@@ -214,6 +255,17 @@ df = load_metrics()
 last_sync = pd.to_datetime(df["last_updated"], errors="coerce").max() if "last_updated" in df.columns and not df.empty else None
 last_sync_label = time_ago(last_sync) if last_sync is not None and pd.notna(last_sync) else "never"
 
+# Staleness is a quiet pill in the header, not a full-width warning banner —
+# the sync buttons live in the sidebar and the dashboard works fine on cached data.
+stale_pill = ""
+if all_symbols and stale:
+    stale_label = "sync recommended" if len(stale) == len(all_symbols) else f"{len(stale)} stale"
+    stale_pill = (
+        '<span style="display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;'
+        'background:rgba(245,158,11,0.13);border:1px solid rgba(251,191,36,0.35);'
+        f'color:#fbbf24;font-size:0.7rem;font-weight:600;">⟳ {stale_label}</span>'
+    )
+
 st.markdown(
     f"""
     <div class="app-header">
@@ -223,7 +275,7 @@ st.markdown(
         </div>
         <div class="meta">
             {len(df) if not df.empty else 0} tickers tracked<br>
-            Last sync: {last_sync_label}
+            Last sync: {last_sync_label}{stale_pill}
         </div>
     </div>
     """,
@@ -233,9 +285,6 @@ st.markdown(
 if df.empty:
     st.info("No tickers tracked yet — add some from the sidebar to get started.")
     st.stop()
-
-if stale and len(stale) == len(all_symbols):
-    st.warning(f"All data is older than {STALE_HOURS}h (or never synced). Use **Sync stale** in the sidebar to refresh — the dashboard stays usable while you decide.")
 
 # ---------------------------------------------------------------------------
 # Prepare display frame
@@ -277,6 +326,23 @@ COLUMN_MAP = {
     "adj_target": "Analyst Δ",
     "adj_pe_traj": "Trajectory Δ",
     "adj_exhaustion": "Exhaust Δ",
+    "adj_dcf": "Intrinsic Δ",
+    "dcf_value": "DCF Value",
+    "dcf_upside": "DCF Upside %",
+    "dcf_verdict": "DCF Verdict",
+    "max_drawdown_1y": "Max DD %",
+    "roe": "ROE %",
+    "gross_margin": "Gross M %",
+    "operating_margin": "Op M %",
+    "profit_margin": "Net M %",
+    "revenue_growth": "Rev Growth %",
+    "earnings_growth": "EPS Growth %",
+    "debt_to_equity": "D/E",
+    "current_ratio": "Current Ratio",
+    "free_cashflow": "FCF",
+    "num_analysts": "Analysts",
+    "recommendation_mean": "Rec Mean",
+    "next_earnings": "Earnings",
     "last_updated": "Updated",
 }
 
@@ -284,30 +350,55 @@ display_df = df.rename(columns=COLUMN_MAP)
 if "Sector" in display_df.columns:
     display_df["Sector"] = display_df["Sector"].fillna("Unknown").replace("", "Unknown")
 
+# Sector-relative rank: percentile of buy score within its own sector, so a
+# utility isn't judged on the same absolute scale as a semiconductor.
+if "Buy Score" in display_df.columns and "Sector" in display_df.columns:
+    _scores = pd.to_numeric(display_df["Buy Score"], errors="coerce")
+    display_df["Sector %ile"] = (_scores.groupby(display_df["Sector"]).rank(pct=True) * 100).round(0)
+    _sector_sizes = display_df.groupby("Sector")["Symbol"].transform("count")
+    # A percentile is meaningless against 1-2 peers — blank it out there.
+    display_df.loc[_sector_sizes < 3, "Sector %ile"] = float("nan")
+
+# "Summary" is the decision view: every high-signal metric in one screen —
+# composite score, both upside estimates (DCF + analyst), valuation, growth,
+# quality, and risk — ordered roughly by how much each should drive a decision.
 VIEW_COLS = {
     "Summary": [
-        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Mode", "Coverage %",
-        "Price", "Market Cap", "Est Growth %", "Target Upside %", "Updated",
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
+        "DCF Upside %", "Target Upside %", "PEG", "Fwd P/E",
+        "Est Growth %", "ROE %", "Max DD %",
+        "Price", "Coverage %", "Earnings", "Updated",
     ],
     "Scores": [
-        "Symbol", "Name", "Sector", "Buy Score", "Rating",
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
-        "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ",
+        "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ",
         "Mode", "Coverage %",
     ],
+    "Fundamentals": [
+        "Symbol", "Name", "Sector", "Market Cap",
+        "ROE %", "Gross M %", "Op M %", "Net M %",
+        "Rev Growth %", "EPS Growth %", "FCF",
+        "D/E", "Current Ratio", "DCF Value", "DCF Upside %", "DCF Verdict",
+        "Analysts", "Rec Mean", "Earnings",
+    ],
     "Technicals": [
-        "Symbol", "Name", "Sector", "Price", "RSI(14)", "Exhaustion",
+        "Symbol", "Name", "Sector", "Price", "RSI(14)", "Exhaustion", "Max DD %",
         "vs 50MA %", "vs 200MA %", "MACD", "BB Position", "ROC 10d",
         "Vol 20d", "Vol 50d", "Updated",
     ],
     "Full": [
-        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Mode", "Coverage %",
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile", "Mode", "Coverage %",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
-        "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ",
-        "Price", "Market Cap", "Trailing P/E", "Fwd P/E", "PEG", "Beta",
-        "Est Growth %", "Target Upside %", "52W High", "52W Low",
+        "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ",
+        "Price", "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
+        "Trailing P/E", "Fwd P/E", "PEG", "Beta",
+        "Est Growth %", "Target Upside %", "ROE %", "Gross M %", "Op M %", "Net M %",
+        "Rev Growth %", "EPS Growth %", "FCF", "D/E", "Current Ratio",
+        "52W High", "52W Low", "Max DD %",
         "RSI(14)", "Exhaustion", "vs 50MA %", "vs 200MA %", "MACD",
-        "BB Position", "ROC 10d", "Vol 20d", "Vol 50d", "Updated",
+        "BB Position", "ROC 10d", "Vol 20d", "Vol 50d",
+        "Analysts", "Rec Mean", "Earnings", "Updated",
     ],
 }
 
@@ -382,7 +473,9 @@ def render_cards(cards_df: pd.DataFrame, held_symbols: set):
 
 held_symbols = set(display_df.loc[display_df["is_held"] == 1, "Symbol"]) if "is_held" in display_df.columns else set()
 
-tab_overview, tab_screener, tab_detail = st.tabs(["📊 Overview", "🔎 Screener", "📈 Ticker Detail"])
+tab_overview, tab_screener, tab_research, tab_detail = st.tabs(
+    ["📊 Overview", "🔎 Screener", "🧪 Research Pack", "📈 Ticker Detail"]
+)
 
 # ---------------------------------------------------------------------------
 # OVERVIEW
@@ -504,8 +597,9 @@ with tab_screener:
         mode_filter = st.multiselect("Score mode", mode_options, placeholder="All score modes", label_visibility="collapsed")
 
     NUMERIC_FILTERS = [
-        "Buy Score", "Coverage %", "Valuation", "Growth", "Profit", "Momentum", "Risk",
+        "Buy Score", "Sector %ile", "Coverage %", "DCF Upside %", "Valuation", "Growth", "Profit", "Momentum", "Risk",
         "PEG", "Trailing P/E", "Fwd P/E", "Est Growth %", "Target Upside %",
+        "ROE %", "Rev Growth %", "Max DD %", "D/E",
         "RSI(14)", "Beta", "Market Cap",
     ]
     numeric_ranges = {}
@@ -571,6 +665,258 @@ with tab_screener:
         render_table(compare_df, held_symbols)
 
 # ---------------------------------------------------------------------------
+# RESEARCH PACK (Tier 2 — deterministic, free, no LLM)
+# ---------------------------------------------------------------------------
+
+def _research_metric_row(items):
+    cols = st.columns(len(items))
+    for col, (label, value) in zip(cols, items):
+        col.metric(label, value)
+
+
+with tab_research:
+    r_symbols = display_df.sort_values("Buy Score", ascending=False, na_position="last")["Symbol"].tolist()
+    research_symbol = st.selectbox("Ticker", r_symbols, key="research_symbol")
+
+    raw_rows = df[df["symbol"] == research_symbol]
+    raw_row = raw_rows.iloc[0].to_dict() if not raw_rows.empty else None
+
+    if raw_row is None:
+        st.info("Pick a ticker to build its research pack.")
+    elif raw_row.get("buy_score") is None:
+        st.warning(f"{research_symbol} hasn't been synced yet — run a sync from the sidebar first.")
+    else:
+        price = raw_row.get("price")
+        buy = raw_row.get("buy_score")
+        tier = TIERS[score_tier(buy)]
+        rating = raw_row.get("rating_band") or "—"
+        verdict = raw_row.get("dcf_verdict")
+        verdict_tier = {"Undervalued": "strong_buy", "Fairly Valued": "hold", "Overvalued": "strong_sell"}.get(verdict, "neutral")
+
+        sector_pct = None
+        if "Sector %ile" in display_df.columns:
+            pct_vals = display_df.loc[display_df["Symbol"] == research_symbol, "Sector %ile"]
+            if not pct_vals.empty and pd.notna(pct_vals.iloc[0]):
+                sector_pct = float(pct_vals.iloc[0])
+        sector_pct_badge = (
+            badge(f"Sector rank: {sector_pct:.0f}th %ile", score_tier(sector_pct))
+            if sector_pct is not None else ""
+        )
+
+        head_l, head_r = st.columns([4, 1])
+        with head_l:
+            st.markdown(
+                f"""
+                <div style="display:flex;align-items:center;gap:14px;margin:6px 0 2px;">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:700;">{research_symbol}</div>
+                    <div style="color:#8b95a8;">{raw_row.get('name') or ''}</div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    {badge(rating, RATING_TIER.get(rating, 'neutral'))}
+                    {badge(f"DCF: {verdict}" if verdict else "DCF: n/a", verdict_tier)}
+                    {badge(raw_row.get('sector') or 'Unknown')}
+                    {sector_pct_badge}
+                    {badge(f"Earnings: {raw_row.get('next_earnings') or 'n/a'}")}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with head_r:
+            st.markdown(
+                f"""
+                <div style="text-align:center;background:{tier['bg']};border:1px solid {tier['border']};border-radius:14px;padding:8px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.12em;color:{tier['fg']};">Buy score</div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:1.9rem;font-weight:700;color:{tier['fg']};">{fmt(buy, 'Buy Score')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        # --- 1. Intrinsic value (DCF) ---
+        st.markdown('<div class="section-title">💰 Intrinsic value (2-stage DCF)</div>', unsafe_allow_html=True)
+        # Recompute live from stored fundamentals so we can show the assumptions;
+        # falls back to the values stored at sync time.
+        dcf = dcf_valuation(
+            fcf=raw_row.get("free_cashflow"),
+            shares=raw_row.get("shares_outstanding"),
+            price=price,
+            growth_pct=raw_row.get("projected_cagr"),
+            beta=raw_row.get("beta"),
+            cash=raw_row.get("total_cash"),
+            debt=raw_row.get("total_debt"),
+        )
+        if dcf is None and raw_row.get("dcf_value") is not None:
+            dcf = {
+                "value": raw_row.get("dcf_value"), "upside": raw_row.get("dcf_upside"),
+                "bull": raw_row.get("dcf_bull"), "bear": raw_row.get("dcf_bear"),
+                "verdict": raw_row.get("dcf_verdict"), "growth_used": None, "discount_rate": None,
+            }
+        if dcf is None:
+            st.info("DCF unavailable — requires positive free cash flow and shares outstanding. "
+                    "For pre-profit or non-equity names, lean on the technical/momentum read instead.")
+        else:
+            _research_metric_row([
+                ("Current price", fmt(price, "Price")),
+                ("Intrinsic value", fmt(dcf["value"], "DCF Value")),
+                ("DCF upside", fmt(dcf["upside"], "DCF Upside %")),
+                ("Bull target", fmt(dcf["bull"], "DCF Value")),
+                ("Bear target", fmt(dcf["bear"], "DCF Value")),
+                ("Analyst upside", fmt(raw_row.get("target_upside"), "Target Upside %")),
+            ])
+            if dcf.get("growth_used") is not None:
+                st.caption(
+                    f"Assumptions: FCF grows {dcf['growth_used']}%/yr fading to 2.5% terminal · "
+                    f"discount rate {dcf['discount_rate']}% (beta-scaled) · net cash included. "
+                    "A deliberately conservative, fully mechanical model — treat it as a sanity check, not a price target."
+                )
+
+        scenarios = scenario_cagr(raw_row.get("projected_cagr"), raw_row.get("beta"), raw_row.get("data_coverage"))
+        if scenarios:
+            bear_b = badge(f"Bear {scenarios['bear']:.0f}%", "strong_sell")
+            base_b = badge(f"Base {scenarios['base']:.0f}%", "hold")
+            bull_b = badge(f"Bull {scenarios['bull']:.0f}%", "strong_buy")
+            st.markdown(
+                f"**Expected CAGR scenarios (3-4yr):** {bear_b} {base_b} {bull_b}",
+                unsafe_allow_html=True,
+            )
+
+        # --- 2. Quality & balance sheet ---
+        st.markdown('<div class="section-title">🏦 Quality & balance sheet</div>', unsafe_allow_html=True)
+        _research_metric_row([
+            ("ROE", fmt(raw_row.get("roe"), "ROE %")),
+            ("Gross margin", fmt(raw_row.get("gross_margin"), "Gross M %")),
+            ("Op margin", fmt(raw_row.get("operating_margin"), "Op M %")),
+            ("Net margin", fmt(raw_row.get("profit_margin"), "Net M %")),
+            ("FCF (ttm)", fmt(raw_row.get("free_cashflow"), "FCF")),
+        ])
+        _research_metric_row([
+            ("Revenue growth", fmt(raw_row.get("revenue_growth"), "Rev Growth %")),
+            ("Earnings growth", fmt(raw_row.get("earnings_growth"), "EPS Growth %")),
+            ("Debt / equity", fmt(raw_row.get("debt_to_equity"), "D/E")),
+            ("Current ratio", fmt(raw_row.get("current_ratio"), "Current Ratio")),
+            ("Analysts", fmt(raw_row.get("num_analysts"), "Analysts")),
+        ])
+
+        # --- 3. Risk & stress ---
+        st.markdown('<div class="section-title">⚠️ Risk & stress</div>', unsafe_allow_html=True)
+        _research_metric_row([
+            ("Beta", fmt(raw_row.get("beta"), "Beta")),
+            ("Max drawdown (1y)", fmt(raw_row.get("max_drawdown_1y"), "Max DD %")),
+            ("RSI(14)", fmt(raw_row.get("rsi_14"), "RSI(14)")),
+            ("Exhaustion", raw_row.get("exhaustion_level") or "—"),
+            ("52W high", fmt(raw_row.get("week_52_high"), "52W High")),
+            ("52W low", fmt(raw_row.get("week_52_low"), "52W Low")),
+        ])
+        st.caption(
+            "Recession stress rule of thumb: expect a drawdown of roughly beta × market decline. "
+            "In a -25% market, a beta-{b} name sketches to ~{s}.".format(
+                b=f"{raw_row.get('beta'):.1f}" if isinstance(raw_row.get("beta"), (int, float)) else "1.0",
+                s=f"-{abs((raw_row.get('beta') or 1.0) * 25):.0f}%" if isinstance(raw_row.get("beta"), (int, float)) else "-25%",
+            )
+        )
+
+        with st.expander("📐 Correlation vs my holdings (diversification check)"):
+            corr_targets = sorted(h for h in held_symbols if h != research_symbol)
+            if not corr_targets:
+                st.info("Tag some holdings in the sidebar to enable the correlation check.")
+            else:
+                corr_key = f"corr_{research_symbol}"
+                if st.button(f"Compute vs {len(corr_targets)} holdings (fetches 1y prices)", key="corr_btn"):
+                    with st.spinner("Computing daily-return correlations…"):
+                        base_hist = load_history(research_symbol, "1y")
+                        rows = []
+                        if base_hist is not None:
+                            base_ret = base_hist["Close"].pct_change().dropna()
+                            for h_sym in corr_targets:
+                                h_hist = load_history(h_sym, "1y")
+                                if h_hist is None:
+                                    continue
+                                joined = pd.concat(
+                                    [base_ret, h_hist["Close"].pct_change().dropna()],
+                                    axis=1, join="inner",
+                                ).dropna()
+                                if len(joined) > 40:
+                                    rows.append({"Holding": h_sym, "Correlation": round(float(joined.iloc[:, 0].corr(joined.iloc[:, 1])), 2)})
+                        st.session_state[corr_key] = pd.DataFrame(rows).sort_values("Correlation", ascending=False) if rows else None
+                corr_df = st.session_state.get(corr_key)
+                if corr_df is not None and isinstance(corr_df, pd.DataFrame) and not corr_df.empty:
+                    avg_corr = corr_df["Correlation"].mean()
+                    st.dataframe(corr_df, hide_index=True, use_container_width=True)
+                    note = (
+                        "high overlap — adds little diversification" if avg_corr > 0.6
+                        else "moderate overlap" if avg_corr > 0.35
+                        else "good diversifier vs the current book"
+                    )
+                    st.markdown(f"Average correlation **{avg_corr:.2f}** → {note}.")
+                elif corr_key in st.session_state:
+                    st.warning("Could not fetch enough overlapping price history to compute correlations.")
+
+        # --- 4. Execution plan ---
+        st.markdown('<div class="section-title">🎯 Execution plan</div>', unsafe_allow_html=True)
+        plan = entry_plan(raw_row)
+        sizing = position_plan(raw_row)
+        exec_l, exec_r = st.columns(2)
+        with exec_l:
+            st.markdown("**Entry & stops**")
+            if plan:
+                if plan["entry_low"] and plan["entry_high"]:
+                    st.markdown(f"- Entry zone: **${plan['entry_low']:,.2f} – ${plan['entry_high']:,.2f}**")
+                ma50_text = f"${plan['ma50']:,.2f}" if plan["ma50"] else "—"
+                ma200_text = f"${plan['ma200']:,.2f}" if plan["ma200"] else "—"
+                st.markdown(f"- 50-day MA: {ma50_text} · 200-day MA: {ma200_text}")
+                st.markdown(f"- Hard stop: **${plan['hard_stop']:,.2f}** ({(plan['hard_stop'] / price - 1) * 100:.0f}% from current)")
+                st.caption(plan["note"])
+            else:
+                st.caption("Not enough data for an entry plan.")
+        with exec_r:
+            st.markdown("**Position sizing**")
+            st.markdown(f"- Classification: **{sizing['bucket']}** · suggested weight **{sizing['weight']}**")
+            st.caption(sizing["rationale"].capitalize() if sizing["rationale"] else "")
+            st.caption(sizing["dca"])
+
+        # --- 5. 22V idea-to-equity matrix row ---
+        st.markdown('<div class="section-title">🧮 Idea-to-equity matrix (22V style)</div>', unsafe_allow_html=True)
+        traj = raw_row.get("adj_pe_traj")
+        revisions = "+" if isinstance(traj, (int, float)) and traj > 0 else ("-" if isinstance(traj, (int, float)) and traj < 0 else "")
+        matrix = pd.DataFrame([{
+            "Company": raw_row.get("name") or research_symbol,
+            "Ticker": research_symbol,
+            "Technical (0-4)": raw_row.get("technical_score"),
+            "Commentary (0-4)": raw_row.get("commentary_score"),
+            "Revisions": revisions,
+            "Mkt Cap": fmt_large_number(raw_row.get("market_cap")),
+            "Fwd P/E": fmt(raw_row.get("pe_forward"), "Fwd P/E"),
+            "Trail P/E": fmt(raw_row.get("pe_trailing"), "Trailing P/E"),
+            "PEG": fmt(raw_row.get("peg_ratio"), "PEG"),
+            "Bear/Base/Bull CAGR": (f"{scenarios['bear']:.0f}% / {scenarios['base']:.0f}% / {scenarios['bull']:.0f}%" if scenarios else "—"),
+            "Buy Score": buy,
+        }])
+        st.dataframe(matrix, hide_index=True, use_container_width=True)
+
+        # --- 6. Recent headlines ---
+        st.markdown('<div class="section-title">📰 Recent headlines</div>', unsafe_allow_html=True)
+        ticker_news = load_news(research_symbol)
+        render_news_list(ticker_news)
+
+        # --- 7. LLM memo prompt export ---
+        st.markdown('<div class="section-title">📋 Deep-dive memo prompt (for any LLM)</div>', unsafe_allow_html=True)
+        st.caption(
+            "The qualitative half of the memo (moat, systems map, second-order effects) needs an LLM. "
+            "This prompt embeds the verified numbers above plus your current holdings, so the model "
+            "analyzes real data instead of inventing it. Copy it into Claude / ChatGPT / Gemini (free tiers work)."
+        )
+        holdings_rows = df[df["is_held"] == 1][["symbol", "sector", "buy_score"]].to_dict("records") if "is_held" in df.columns else []
+        memo_prompt = build_research_prompt(raw_row, holdings_rows, news=ticker_news)
+        with st.expander("Show prompt", expanded=False):
+            st.code(memo_prompt, language=None)
+        st.download_button(
+            "⬇️ Download prompt (.txt)",
+            data=memo_prompt,
+            file_name=f"research_prompt_{research_symbol}_{datetime.now().strftime('%Y%m%d')}.txt",
+            mime="text/plain",
+        )
+
+# ---------------------------------------------------------------------------
 # TICKER DETAIL
 # ---------------------------------------------------------------------------
 
@@ -627,6 +973,7 @@ with tab_detail:
             ("Analyst conviction", row.get("Analyst Δ")),
             ("Earnings trajectory", row.get("Trajectory Δ")),
             ("Trend exhaustion", row.get("Exhaust Δ")),
+            ("Intrinsic value", row.get("Intrinsic Δ")),
         ]
         adj_html = " ".join(
             badge(
@@ -687,6 +1034,9 @@ with tab_detail:
         if isinstance(desc, str) and desc.strip():
             with st.expander("Company description"):
                 st.markdown(desc)
+
+        with st.expander("📰 Recent headlines"):
+            render_news_list(load_news(selected_symbol))
 
         detail_actions = st.columns([1, 5])
         if detail_actions[0].button("🗑️ Remove ticker", key="remove_detail"):

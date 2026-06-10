@@ -513,16 +513,17 @@ def score_risk(
 
 
 # =============================================================================
-# CONVICTION ADJUSTMENTS — four transparent cross-checks, capped at +/-12
+# CONVICTION ADJUSTMENTS — five transparent cross-checks, capped at +/-12
 # =============================================================================
 
-ADJUSTMENT_KEYS = ("value_premium", "analyst_conviction", "earnings_trajectory", "exhaustion")
+ADJUSTMENT_KEYS = ("value_premium", "analyst_conviction", "earnings_trajectory", "exhaustion", "intrinsic_value")
 
 
 def _conviction_adjustments(
     info: Dict,
     target_upside: float,
     exhaustion_level: str,
+    dcf_upside: float = None,
 ) -> Tuple[float, Dict[str, float]]:
     adjustments = {}
 
@@ -582,6 +583,23 @@ def _conviction_adjustments(
     exhaustion_map = {"Extreme": -6, "High": -3, "Building": -1, "None": 1}
     adjustments["exhaustion"] = float(exhaustion_map.get(exhaustion_level, 0))
 
+    # 5. Intrinsic value (-4 to +4): DCF upside cross-check. Only present when
+    #    the company has real positive FCF (the DCF returns None otherwise),
+    #    so this never rewards story stocks on imaginary cash flows.
+    dcf_adj = 0.0
+    if _has(dcf_upside):
+        if dcf_upside > 50:
+            dcf_adj = 4
+        elif dcf_upside > 25:
+            dcf_adj = 3
+        elif dcf_upside > 10:
+            dcf_adj = 1
+        elif dcf_upside < -40:
+            dcf_adj = -4
+        elif dcf_upside < -20:
+            dcf_adj = -2
+    adjustments["intrinsic_value"] = dcf_adj
+
     total = _clip(sum(adjustments.values()), -MAX_ADJUSTMENT, MAX_ADJUSTMENT)
     return total, adjustments
 
@@ -602,6 +620,7 @@ def calculate_buy_score(
     week_52_change: float,
     rsi: float,
     target_upside: float = None,
+    dcf_upside: float = None,
 ) -> Tuple[int, Dict[str, float], Dict[str, float], float, str]:
     """
     Coverage-aware 5-pillar composite Buy Score (0-100).
@@ -643,7 +662,7 @@ def calculate_buy_score(
         adj_total = 0.0
     else:
         active = [name for name in PILLAR_WEIGHTS if pillars[name] is not None]
-        adj_total, adjustments = _conviction_adjustments(info, target_upside, exhaustion_level)
+        adj_total, adjustments = _conviction_adjustments(info, target_upside, exhaustion_level, dcf_upside)
 
     weight_total = sum(PILLAR_WEIGHTS[name] for name in active)
     if weight_total > 0:
