@@ -105,6 +105,8 @@ def fmt(val, col):
         return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
     if col in ("Buy Score", "Analysts"):
         return str(int(val)) if isinstance(val, (int, float)) else str(val)
+    if col == "Sector %ile":
+        return f"{val:.0f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Valuation", "Growth", "Profit", "Momentum", "Risk", "D/E"):
         return f"{val:.0f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ"):
@@ -153,6 +155,14 @@ def cell_style(val, col) -> str:
         if val < 0:
             return f"color:{BAD};"
         return "color:#64748b;"
+    if col == "Sector %ile" and is_num:
+        if val >= 80:
+            return f"color:{GOOD};font-weight:600;"
+        if val >= 60:
+            return f"color:{GOOD};"
+        if val <= 20:
+            return f"color:{BAD};"
+        return "color:#94a3b8;"
     if col == "DCF Upside %" and is_num:
         if val > 20:
             return f"color:{GOOD};font-weight:600;"
@@ -263,21 +273,21 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid var(--border);
 }
 
-/* App header */
+/* App header — compact single strip, stays out of the way */
 .app-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 16px;
-    padding: 18px 22px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.10), rgba(18, 24, 38, 0.7) 45%);
+    padding: 10px 18px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(18, 24, 38, 0.55) 45%);
     border: 1px solid var(--border);
-    margin-bottom: 14px;
+    margin-bottom: 10px;
 }
-.app-header h1 { margin: 0; font-size: 1.55rem; }
-.app-header .sub { color: var(--muted); font-size: 0.84rem; margin-top: 3px; }
-.app-header .meta { text-align: right; color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.app-header h1 { margin: 0; font-size: 1.2rem; display: inline; }
+.app-header .sub { color: var(--muted); font-size: 0.78rem; margin-top: 1px; }
+.app-header .meta { text-align: right; color: var(--muted); font-size: 0.78rem; line-height: 1.45; white-space: nowrap; }
 
 /* KPI cards */
 .kpi {

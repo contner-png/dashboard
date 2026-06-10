@@ -3,7 +3,9 @@
 ## Architecture
 - `app.py` — Streamlit UI only (header, sidebar management, Overview / Screener / Ticker Detail tabs). Reads come from SQLite via `load_metrics()` (`st.cache_data`, 2 min TTL); call `invalidate_data()` after any DB mutation.
 - `src/database.py` — SQLite layer. `METRIC_COLUMNS` is the single source of truth for the metrics schema; `init_db()` auto-adds any missing column, so never hand-write ALTER TABLE migrations. DB path resolves from `STOCKS_DB_PATH` / `STOCKS_DB_DIR` / `RENDER_DISK_PATH`, falling back to `data/stocks.db`. WAL mode is enabled.
-- `src/fetcher.py` — yfinance access (free data source — keep it that way). `fetch_ticker_data` returns info + 6mo history + statement-derived growth fields; `fetch_history` is the lightweight chart fetch.
+- `src/fetcher.py` — yfinance access (free data source — keep it that way). `fetch_ticker_data` returns info + 1y history + statement-derived growth fields; `fetch_history` is the lightweight chart fetch; `fetch_news` normalizes both yfinance news shapes and never raises.
+- Price cache: sync writes daily close/volume into the `prices` table (`store_prices`/`get_prices`). The app's `load_history` serves charts and correlation checks from this cache when it's fresh (<7 days) and covers the requested period, falling back to network, then to stale cache. This also accumulates history for future backtesting.
+- `Sector %ile` is computed at render time in `app.py` (percentile of buy score within sector, blanked for sectors with <3 tickers) — it is not a DB column.
 - `src/scoring.py` — Buy Score v3 (see below).
 - `src/research.py` — Tier-2 Research Pack: deterministic 2-stage DCF, CAGR scenario bands, max drawdown, entry/stop plans, position sizing, and the CIO memo prompt builder. No LLM, no paid data.
 - `src/sync.py` — `add_and_sync` persists the ticker BEFORE fetching (a failed fetch never loses a ticker); `sync_many` runs syncs in a thread pool with a progress callback. There is no automatic sync on app launch — the UI offers "Sync stale" / "Sync all". History is fetched at 1y (needed for the 200-day MA and 1y max drawdown).

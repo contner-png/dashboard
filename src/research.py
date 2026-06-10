@@ -191,7 +191,7 @@ def position_plan(row: Dict) -> Dict:
     }
 
 
-def build_research_prompt(row: Dict, holdings: List[Dict]) -> str:
+def build_research_prompt(row: Dict, holdings: List[Dict], news: Optional[List[Dict]] = None) -> str:
     """
     Assemble the full CIO deep-dive prompt pre-filled with this ticker's real
     numbers and the user's actual holdings, so the LLM is grounded instead of
@@ -205,6 +205,12 @@ def build_research_prompt(row: Dict, holdings: List[Dict]) -> str:
         if money:
             return f"${v:,.2f}" if abs(v) < 10000 else f"${v:,.0f}"
         return f"{v}{suffix}"
+
+    news_lines = "\n".join(
+        f"- {n.get('title')} ({n.get('publisher') or 'unknown'}, {str(n.get('published') or '')[:10]})"
+        for n in (news or [])
+        if n.get("title")
+    ) or "- (no recent headlines available)"
 
     holdings_lines = "\n".join(
         f"- {h.get('symbol')} ({h.get('sector') or 'Unknown'}) — buy score {h.get('buy_score') if h.get('buy_score') is not None else 'n/a'}"
@@ -277,6 +283,9 @@ Risk: beta {fv('beta')} | max drawdown (1y) {fv('max_drawdown_1y', '%')} | exhau
 Range: 52w high {fv('week_52_high', money=True)} / low {fv('week_52_low', money=True)} | vs 50-day MA {fv('price_vs_50ma', '%')} | vs 200-day MA {fv('price_vs_200ma', '%')}
 Analyst coverage: {fv('num_analysts')} analysts | consensus rec (1=strong buy, 5=sell): {fv('recommendation_mean')}
 Legacy 22V scores: Technical {fv('technical_score')}/4 | Commentary {fv('commentary_score')}/4
+
+=== RECENT HEADLINES (Yahoo Finance) ===
+{news_lines}
 
 === MY CURRENT HOLDINGS (capital-appreciation focus, 2-3 year horizon) ===
 {holdings_lines}

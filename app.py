@@ -12,9 +12,10 @@ from src.database import (
     get_stale_tickers,
     get_holdings,
     set_holdings,
+    get_prices,
 )
 from src.sync import add_and_sync, sync_many
-from src.fetcher import fetch_history
+from src.fetcher import fetch_history, fetch_news
 from src.research import dcf_valuation, scenario_cagr, entry_plan, position_plan, build_research_prompt
 from src.ui import (
     inject_css,
@@ -48,9 +49,48 @@ def load_metrics() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+PERIOD_DAYS = {"6mo": 182, "1y": 365, "2y": 730, "5y": 1825}
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def load_history(symbol: str, period: str = "1y"):
-    return fetch_history(symbol, period)
+    """Serve price history from the local cache when it's fresh enough and
+    covers the requested period; otherwise fall back to a network fetch."""
+    days = PERIOD_DAYS.get(period, 365)
+    cached = get_prices(symbol)
+    if cached is not None and len(cached) > 30:
+        age_days = (pd.Timestamp.now() - cached.index.max()).days
+        span_days = (cached.index.max() - cached.index.min()).days
+        if age_days <= 7 and span_days >= days * 0.8:
+            return cached[cached.index >= cached.index.max() - pd.Timedelta(days=days)]
+    fetched = fetch_history(symbol, period)
+    if fetched is not None:
+        return fetched
+    # Network down but we have *something* local — stale beats blank.
+    return cached
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_news(symbol: str):
+    return fetch_news(symbol)
+
+
+def render_news_list(news: list):
+    if not news:
+        st.caption("No recent headlines available right now.")
+        return
+    for item in news:
+        date_label = ""
+        published = pd.to_datetime(item.get("published"), errors="coerce", utc=True)
+        if pd.notna(published):
+            date_label = f" · {published.strftime('%b %d')}"
+        title = item.get("title", "")
+        url = item.get("url", "")
+        source = item.get("publisher") or "Yahoo Finance"
+        if url:
+            st.markdown(f"- [{title}]({url}) — {source}{date_label}")
+        else:
+            st.markdown(f"- {title} — {source}{date_label}")
 
 
 def invalidate_data():
@@ -215,6 +255,17 @@ df = load_metrics()
 last_sync = pd.to_datetime(df["last_updated"], errors="coerce").max() if "last_updated" in df.columns and not df.empty else None
 last_sync_label = time_ago(last_sync) if last_sync is not None and pd.notna(last_sync) else "never"
 
+# Staleness is a quiet pill in the header, not a full-width warning banner —
+# the sync buttons live in the sidebar and the dashboard works fine on cached data.
+stale_pill = ""
+if all_symbols and stale:
+    stale_label = "sync recommended" if len(stale) == len(all_symbols) else f"{len(stale)} stale"
+    stale_pill = (
+        '<span style="display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;'
+        'background:rgba(245,158,11,0.13);border:1px solid rgba(251,191,36,0.35);'
+        f'color:#fbbf24;font-size:0.7rem;font-weight:600;">⟳ {stale_label}</span>'
+    )
+
 st.markdown(
     f"""
     <div class="app-header">
@@ -224,7 +275,7 @@ st.markdown(
         </div>
         <div class="meta">
             {len(df) if not df.empty else 0} tickers tracked<br>
-            Last sync: {last_sync_label}
+            Last sync: {last_sync_label}{stale_pill}
         </div>
     </div>
     """,
@@ -234,9 +285,6 @@ st.markdown(
 if df.empty:
     st.info("No tickers tracked yet — add some from the sidebar to get started.")
     st.stop()
-
-if stale and len(stale) == len(all_symbols):
-    st.warning(f"All data is older than {STALE_HOURS}h (or never synced). Use **Sync stale** in the sidebar to refresh — the dashboard stays usable while you decide.")
 
 # ---------------------------------------------------------------------------
 # Prepare display frame
@@ -302,18 +350,27 @@ display_df = df.rename(columns=COLUMN_MAP)
 if "Sector" in display_df.columns:
     display_df["Sector"] = display_df["Sector"].fillna("Unknown").replace("", "Unknown")
 
+# Sector-relative rank: percentile of buy score within its own sector, so a
+# utility isn't judged on the same absolute scale as a semiconductor.
+if "Buy Score" in display_df.columns and "Sector" in display_df.columns:
+    _scores = pd.to_numeric(display_df["Buy Score"], errors="coerce")
+    display_df["Sector %ile"] = (_scores.groupby(display_df["Sector"]).rank(pct=True) * 100).round(0)
+    _sector_sizes = display_df.groupby("Sector")["Symbol"].transform("count")
+    # A percentile is meaningless against 1-2 peers — blank it out there.
+    display_df.loc[_sector_sizes < 3, "Sector %ile"] = float("nan")
+
 # "Summary" is the decision view: every high-signal metric in one screen —
 # composite score, both upside estimates (DCF + analyst), valuation, growth,
 # quality, and risk — ordered roughly by how much each should drive a decision.
 VIEW_COLS = {
     "Summary": [
-        "Symbol", "Name", "Sector", "Buy Score", "Rating",
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
         "DCF Upside %", "Target Upside %", "PEG", "Fwd P/E",
         "Est Growth %", "ROE %", "Max DD %",
         "Price", "Coverage %", "Earnings", "Updated",
     ],
     "Scores": [
-        "Symbol", "Name", "Sector", "Buy Score", "Rating",
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
         "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ",
         "Mode", "Coverage %",
@@ -331,7 +388,7 @@ VIEW_COLS = {
         "Vol 20d", "Vol 50d", "Updated",
     ],
     "Full": [
-        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Mode", "Coverage %",
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile", "Mode", "Coverage %",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
         "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ",
         "Price", "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
@@ -540,7 +597,7 @@ with tab_screener:
         mode_filter = st.multiselect("Score mode", mode_options, placeholder="All score modes", label_visibility="collapsed")
 
     NUMERIC_FILTERS = [
-        "Buy Score", "Coverage %", "DCF Upside %", "Valuation", "Growth", "Profit", "Momentum", "Risk",
+        "Buy Score", "Sector %ile", "Coverage %", "DCF Upside %", "Valuation", "Growth", "Profit", "Momentum", "Risk",
         "PEG", "Trailing P/E", "Fwd P/E", "Est Growth %", "Target Upside %",
         "ROE %", "Rev Growth %", "Max DD %", "D/E",
         "RSI(14)", "Beta", "Market Cap",
@@ -636,6 +693,16 @@ with tab_research:
         verdict = raw_row.get("dcf_verdict")
         verdict_tier = {"Undervalued": "strong_buy", "Fairly Valued": "hold", "Overvalued": "strong_sell"}.get(verdict, "neutral")
 
+        sector_pct = None
+        if "Sector %ile" in display_df.columns:
+            pct_vals = display_df.loc[display_df["Symbol"] == research_symbol, "Sector %ile"]
+            if not pct_vals.empty and pd.notna(pct_vals.iloc[0]):
+                sector_pct = float(pct_vals.iloc[0])
+        sector_pct_badge = (
+            badge(f"Sector rank: {sector_pct:.0f}th %ile", score_tier(sector_pct))
+            if sector_pct is not None else ""
+        )
+
         head_l, head_r = st.columns([4, 1])
         with head_l:
             st.markdown(
@@ -648,6 +715,7 @@ with tab_research:
                     {badge(rating, RATING_TIER.get(rating, 'neutral'))}
                     {badge(f"DCF: {verdict}" if verdict else "DCF: n/a", verdict_tier)}
                     {badge(raw_row.get('sector') or 'Unknown')}
+                    {sector_pct_badge}
                     {badge(f"Earnings: {raw_row.get('next_earnings') or 'n/a'}")}
                 </div>
                 """,
@@ -825,7 +893,12 @@ with tab_research:
         }])
         st.dataframe(matrix, hide_index=True, use_container_width=True)
 
-        # --- 6. LLM memo prompt export ---
+        # --- 6. Recent headlines ---
+        st.markdown('<div class="section-title">📰 Recent headlines</div>', unsafe_allow_html=True)
+        ticker_news = load_news(research_symbol)
+        render_news_list(ticker_news)
+
+        # --- 7. LLM memo prompt export ---
         st.markdown('<div class="section-title">📋 Deep-dive memo prompt (for any LLM)</div>', unsafe_allow_html=True)
         st.caption(
             "The qualitative half of the memo (moat, systems map, second-order effects) needs an LLM. "
@@ -833,7 +906,7 @@ with tab_research:
             "analyzes real data instead of inventing it. Copy it into Claude / ChatGPT / Gemini (free tiers work)."
         )
         holdings_rows = df[df["is_held"] == 1][["symbol", "sector", "buy_score"]].to_dict("records") if "is_held" in df.columns else []
-        memo_prompt = build_research_prompt(raw_row, holdings_rows)
+        memo_prompt = build_research_prompt(raw_row, holdings_rows, news=ticker_news)
         with st.expander("Show prompt", expanded=False):
             st.code(memo_prompt, language=None)
         st.download_button(
@@ -961,6 +1034,9 @@ with tab_detail:
         if isinstance(desc, str) and desc.strip():
             with st.expander("Company description"):
                 st.markdown(desc)
+
+        with st.expander("📰 Recent headlines"):
+            render_news_list(load_news(selected_symbol))
 
         detail_actions = st.columns([1, 5])
         if detail_actions[0].button("🗑️ Remove ticker", key="remove_detail"):

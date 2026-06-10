@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional
 
-from src.database import get_tickers, upsert_metrics, add_ticker
+from src.database import get_tickers, upsert_metrics, add_ticker, store_prices
 from src.fetcher import fetch_ticker_data, get_company_name, get_sector
 from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd
 from src.research import dcf_valuation, max_drawdown
@@ -276,6 +276,7 @@ def sync_ticker(symbol: str) -> bool:
             clean_metrics[k] = v
 
     upsert_metrics(symbol, clean_metrics)
+    store_prices(symbol, history)  # local price cache: instant charts/correlations, backtest fuel
 
     logger.info(
         f"Synced {symbol}: Buy={buy_score} ({band}), mode={score_mode}, coverage={data_coverage:.0f}%"
