@@ -15,3 +15,5 @@ venv/
 ENV/
 .DS_Store
 .streamlit/
+*.db-wal
+*.db-shm

@@ -47,6 +47,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def fetch_history(symbol: str, period: str = "1y") -> Optional[pd.DataFrame]:
+    """Price history only — much faster than fetch_ticker_data for charting."""
+    try:
+        hist = yf.Ticker(symbol).history(period=period)
+        if hist.empty:
+            return None
+        return hist
+    except Exception as e:
+        logger.error(f"Error fetching history for {symbol}: {e}")
+        return None
+
+
 def fetch_ticker_data(symbol: str) -> Optional[Dict]:
     """Fetch all data for a single ticker from Yahoo Finance."""
     try:
