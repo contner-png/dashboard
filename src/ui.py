@@ -93,19 +93,21 @@ def fmt(val, col):
     """Format a value for display based on its display-column name."""
     if val is None or (isinstance(val, float) and val != val):
         return "—"
-    if col == "Market Cap":
+    if col in ("Market Cap", "FCF"):
         return fmt_large_number(val)
-    if col in ("Price", "52W High", "52W Low"):
+    if col in ("Price", "52W High", "52W Low", "DCF Value"):
         return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Trailing P/E", "Fwd P/E", "PEG", "Beta", "RSI(14)"):
+    if col in ("Trailing P/E", "Fwd P/E", "PEG", "Beta", "RSI(14)", "Current Ratio", "Rec Mean"):
         return f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Est Growth %", "Target Upside %", "vs 50MA %", "vs 200MA %", "ROC 10d", "Coverage %"):
+    if col in ("Est Growth %", "Target Upside %", "vs 50MA %", "vs 200MA %", "ROC 10d", "Coverage %",
+               "DCF Upside %", "Max DD %", "ROE %", "Gross M %", "Op M %", "Net M %",
+               "Rev Growth %", "EPS Growth %"):
         return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
-    if col == "Buy Score":
+    if col in ("Buy Score", "Analysts"):
         return str(int(val)) if isinstance(val, (int, float)) else str(val)
-    if col in ("Valuation", "Growth", "Profit", "Momentum", "Risk"):
+    if col in ("Valuation", "Growth", "Profit", "Momentum", "Risk", "D/E"):
         return f"{val:.0f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ"):
+    if col in ("Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ"):
         return f"{val:+.0f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Vol 20d", "Vol 50d"):
         return f"{val:,.0f}" if isinstance(val, (int, float)) else str(val)
@@ -145,12 +147,41 @@ def cell_style(val, col) -> str:
         return tier_css(RATING_TIER.get(val, "neutral"), bold=True)
     if col in ("Valuation", "Growth", "Profit", "Momentum", "Risk") and is_num:
         return tier_css(pillar_tier(val))
-    if col in ("Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ") and is_num:
+    if col in ("Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ") and is_num:
         if val > 0:
             return f"color:{GOOD};"
         if val < 0:
             return f"color:{BAD};"
         return "color:#64748b;"
+    if col == "DCF Upside %" and is_num:
+        if val > 20:
+            return f"color:{GOOD};font-weight:600;"
+        if val < -20:
+            return f"color:{BAD};font-weight:600;"
+        return "color:#94a3b8;"
+    if col == "DCF Verdict":
+        styles = {
+            "Undervalued": tier_css("strong_buy", bold=True),
+            "Fairly Valued": tier_css("hold"),
+            "Overvalued": tier_css("strong_sell"),
+        }
+        return styles.get(val, "")
+    if col == "Max DD %" and is_num:
+        if val < -50:
+            return f"color:{BAD};font-weight:600;"
+        if val < -30:
+            return f"color:{WARN};"
+        return f"color:{GOOD};"
+    if col in ("ROE %", "Gross M %", "Op M %", "Net M %", "Rev Growth %", "EPS Growth %") and is_num:
+        if val > 0:
+            return f"color:{GOOD};"
+        if val < 0:
+            return f"color:{BAD};"
+    if col == "D/E" and is_num:
+        if val > 150:
+            return f"color:{BAD};"
+        if val > 80:
+            return f"color:{WARN};"
     if col == "Exhaustion":
         styles = {
             "Extreme": tier_css("strong_sell", bold=True),

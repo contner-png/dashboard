@@ -64,7 +64,9 @@ def fetch_ticker_data(symbol: str) -> Optional[Dict]:
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info or {}
-        hist = ticker.history(period="6mo")
+        # 1y gives the 200-day MA enough data (6mo left it permanently NaN)
+        # and supports the research pack's 1y max-drawdown stat.
+        hist = ticker.history(period="1y")
 
         if hist.empty:
             logger.warning(f"No price history for {symbol}")

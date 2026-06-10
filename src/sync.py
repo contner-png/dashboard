@@ -1,10 +1,12 @@
 import logging
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional
 
 from src.database import get_tickers, upsert_metrics, add_ticker
 from src.fetcher import fetch_ticker_data, get_company_name, get_sector
 from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd
+from src.research import dcf_valuation, max_drawdown
 from src.scoring import (
     calculate_technical_score,
     calculate_commentary_score,
@@ -153,6 +155,32 @@ def sync_ticker(symbol: str) -> bool:
     if target_mean and current_price and current_price > 0:
         target_upside = round((target_mean - current_price) / current_price * 100, 1)
 
+    # Tier-2 research metrics: DCF intrinsic value + 1y max drawdown
+    dcf = dcf_valuation(
+        fcf=info.get("freeCashflow"),
+        shares=info.get("sharesOutstanding"),
+        price=current_price,
+        growth_pct=projected_cagr,
+        beta=info.get("beta"),
+        cash=info.get("totalCash"),
+        debt=info.get("totalDebt"),
+    )
+    mdd = max_drawdown(history["Close"])
+
+    next_earnings = None
+    earnings_ts = info.get("earningsTimestampStart") or info.get("earningsTimestamp")
+    if earnings_ts:
+        try:
+            next_earnings = datetime.fromtimestamp(float(earnings_ts), tz=timezone.utc).strftime("%Y-%m-%d")
+        except (TypeError, ValueError, OSError):
+            next_earnings = None
+
+    def _pct(key):
+        v = info.get(key)
+        if v is None or (isinstance(v, float) and v != v):
+            return None
+        return round(v * 100, 1)
+
     buy_score, pillars, adjustments, data_coverage, score_mode = calculate_buy_score(
         info=info,
         history=history,
@@ -164,6 +192,7 @@ def sync_ticker(symbol: str) -> bool:
         week_52_change=info.get("52WeekChange"),
         rsi=exhaustion.get("rsi_14"),
         target_upside=target_upside,
+        dcf_upside=dcf["upside"] if dcf else None,
     )
     band = rating_band(buy_score)
 
@@ -206,12 +235,35 @@ def sync_ticker(symbol: str) -> bool:
         "adj_target": adjustments["analyst_conviction"],
         "adj_pe_traj": adjustments["earnings_trajectory"],
         "adj_exhaustion": adjustments["exhaustion"],
+        "adj_dcf": adjustments["intrinsic_value"],
         # retired v2 adjustments — zeroed so stale values don't linger
         "adj_technical": 0,
         "adj_commentary": 0,
         "adj_surprise": 0,
         "adj_coverage": 0,
         "adj_growth": 0,
+        # Tier-2 research pack fundamentals
+        "free_cashflow": info.get("freeCashflow"),
+        "shares_outstanding": info.get("sharesOutstanding"),
+        "total_cash": info.get("totalCash"),
+        "total_debt": info.get("totalDebt"),
+        "debt_to_equity": info.get("debtToEquity"),
+        "current_ratio": info.get("currentRatio"),
+        "roe": _pct("returnOnEquity"),
+        "gross_margin": _pct("grossMargins"),
+        "operating_margin": _pct("operatingMargins"),
+        "profit_margin": _pct("profitMargins"),
+        "revenue_growth": _pct("revenueGrowth"),
+        "earnings_growth": _pct("earningsGrowth"),
+        "recommendation_mean": info.get("recommendationMean"),
+        "num_analysts": info.get("numberOfAnalystOpinions"),
+        "next_earnings": next_earnings,
+        "max_drawdown_1y": mdd,
+        "dcf_value": dcf["value"] if dcf else None,
+        "dcf_upside": dcf["upside"] if dcf else None,
+        "dcf_bull": dcf["bull"] if dcf else None,
+        "dcf_bear": dcf["bear"] if dcf else None,
+        "dcf_verdict": dcf["verdict"] if dcf else None,
         "description": info.get("longBusinessSummary", ""),
     }
 
