@@ -1,6 +1,5 @@
 import sqlite3
 import os
-from datetime import datetime
 from typing import List, Dict, Optional
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "stocks.db")
@@ -17,8 +16,60 @@ DB_PATH = os.path.expanduser(DB_PATH)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
+# Single source of truth for the metrics schema. init_db() adds any column
+# missing from an existing database, so upserts can never hit "no such column".
+METRIC_COLUMNS: Dict[str, str] = {
+    "price": "REAL",
+    "market_cap": "REAL",
+    "pe_trailing": "REAL",
+    "pe_forward": "REAL",
+    "peg_ratio": "REAL",
+    "projected_cagr": "REAL",
+    "beta": "REAL",
+    "target_mean": "REAL",
+    "target_high": "REAL",
+    "target_low": "REAL",
+    "target_upside": "REAL",
+    "week_52_high": "REAL",
+    "week_52_low": "REAL",
+    "rsi_14": "REAL",
+    "volume_20d_avg": "REAL",
+    "volume_50d_avg": "REAL",
+    "price_vs_50ma": "REAL",
+    "price_vs_200ma": "REAL",
+    "macd_signal": "TEXT",
+    "bb_position": "TEXT",
+    "roc_10d": "REAL",
+    "exhaustion_level": "TEXT",
+    "technical_score": "INTEGER",
+    "commentary_score": "INTEGER",
+    "buy_score": "INTEGER",
+    "rating_band": "TEXT",
+    "data_coverage": "REAL",
+    "score_mode": "TEXT",
+    "score_valuation": "REAL",
+    "score_growth": "REAL",
+    "score_profitability": "REAL",
+    "score_momentum": "REAL",
+    "score_risk": "REAL",
+    "adj_technical": "REAL",
+    "adj_commentary": "REAL",
+    "adj_target": "REAL",
+    "adj_surprise": "REAL",
+    "adj_coverage": "REAL",
+    "adj_peg": "REAL",
+    "adj_growth": "REAL",
+    "adj_pe_traj": "REAL",
+    "adj_exhaustion": "REAL",
+    "description": "TEXT",
+}
+
+
 def get_conn() -> sqlite3.Connection:
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    # WAL allows concurrent reads while a background sync is writing.
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def init_db():
@@ -34,50 +85,31 @@ def init_db():
         )
     """)
 
-    cursor.execute("""
+    metric_defs = ",\n            ".join(f"{name} {ctype}" for name, ctype in METRIC_COLUMNS.items())
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS metrics (
             symbol TEXT PRIMARY KEY,
-            price REAL,
-            market_cap REAL,
-            pe_trailing REAL,
-            pe_forward REAL,
-            peg_ratio REAL,
-            projected_cagr REAL,
-            beta REAL,
-            target_mean REAL,
-            target_high REAL,
-            target_low REAL,
-            target_upside REAL,
-            week_52_high REAL,
-            week_52_low REAL,
-            rsi_14 REAL,
-            volume_20d_avg REAL,
-            volume_50d_avg REAL,
-            price_vs_50ma REAL,
-            price_vs_200ma REAL,
-            macd_signal TEXT,
-            bb_position TEXT,
-            roc_10d REAL,
-            exhaustion_level TEXT,
-            technical_score INTEGER,
-            commentary_score INTEGER,
-            buy_score INTEGER,
-            data_coverage REAL,
-            score_mode TEXT,
+            {metric_defs},
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (symbol) REFERENCES tickers(symbol)
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS holdings (
+            symbol TEXT PRIMARY KEY,
+            is_held INTEGER DEFAULT 0,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (symbol) REFERENCES tickers(symbol)
+        )
+    """)
 
+    # Migrate older databases: add every metric column that doesn't exist yet.
     cursor.execute("PRAGMA table_info(metrics)")
-    metric_cols = {row[1] for row in cursor.fetchall()}
-    if "market_cap" not in metric_cols:
-        cursor.execute("ALTER TABLE metrics ADD COLUMN market_cap REAL")
-    if "data_coverage" not in metric_cols:
-        cursor.execute("ALTER TABLE metrics ADD COLUMN data_coverage REAL")
-    if "score_mode" not in metric_cols:
-        cursor.execute("ALTER TABLE metrics ADD COLUMN score_mode TEXT")
+    existing = {row[1] for row in cursor.fetchall()}
+    for name, ctype in METRIC_COLUMNS.items():
+        if name not in existing:
+            cursor.execute(f"ALTER TABLE metrics ADD COLUMN {name} {ctype}")
 
     conn.commit()
     conn.close()
@@ -90,6 +122,11 @@ def add_ticker(symbol: str, name: str = "", sector: str = ""):
         "INSERT OR IGNORE INTO tickers (symbol, name, sector) VALUES (?, ?, ?)",
         (symbol.upper(), name, sector),
     )
+    if name or sector:
+        cursor.execute(
+            "UPDATE tickers SET name = COALESCE(NULLIF(?, ''), name), sector = COALESCE(NULLIF(?, ''), sector) WHERE symbol = ?",
+            (name, sector, symbol.upper()),
+        )
     conn.commit()
     conn.close()
 
@@ -99,6 +136,7 @@ def remove_ticker(symbol: str):
     cursor = conn.cursor()
     cursor.execute("DELETE FROM tickers WHERE symbol = ?", (symbol.upper(),))
     cursor.execute("DELETE FROM metrics WHERE symbol = ?", (symbol.upper(),))
+    cursor.execute("DELETE FROM holdings WHERE symbol = ?", (symbol.upper(),))
     conn.commit()
     conn.close()
 
@@ -107,6 +145,26 @@ def get_tickers() -> List[str]:
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT symbol FROM tickers ORDER BY symbol")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def get_stale_tickers(hours: float = 24.0) -> List[str]:
+    """Tickers never synced or last synced more than `hours` ago."""
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT t.symbol
+        FROM tickers t
+        LEFT JOIN metrics m ON t.symbol = m.symbol
+        WHERE m.last_updated IS NULL
+           OR m.last_updated < datetime('now', ?)
+        ORDER BY t.symbol
+        """,
+        (f"-{hours} hours",),
+    )
     rows = cursor.fetchall()
     conn.close()
     return [r[0] for r in rows]
@@ -125,14 +183,19 @@ def get_ticker_info(symbol: str) -> Optional[Dict]:
         (symbol.upper(),),
     )
     row = cursor.fetchone()
+    cols = [desc[0] for desc in cursor.description]
     conn.close()
     if not row:
         return None
-    cols = [desc[0] for desc in cursor.description]
     return dict(zip(cols, row))
 
 
 def upsert_metrics(symbol: str, metrics: Dict):
+    # Only persist known columns so a stray key can't break the insert.
+    metrics = {k: v for k, v in metrics.items() if k in METRIC_COLUMNS}
+    if not metrics:
+        return
+
     conn = get_conn()
     cursor = conn.cursor()
 
@@ -174,18 +237,8 @@ def get_all_metrics() -> List[Dict]:
 
 
 def init_holdings():
-    conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS holdings (
-            symbol TEXT PRIMARY KEY,
-            is_held INTEGER DEFAULT 0,
-            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (symbol) REFERENCES tickers(symbol)
-        )
-    """)
-    conn.commit()
-    conn.close()
+    # Kept for backward compatibility; init_db() creates the table.
+    init_db()
 
 
 def toggle_holding(symbol: str, is_held: bool):
@@ -194,6 +247,20 @@ def toggle_holding(symbol: str, is_held: bool):
     cursor.execute(
         "INSERT OR REPLACE INTO holdings (symbol, is_held) VALUES (?, ?)",
         (symbol.upper(), 1 if is_held else 0),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_holdings(symbols: List[str]):
+    """Replace the held set with `symbols` in one transaction."""
+    held = {s.upper() for s in symbols}
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM holdings")
+    cursor.executemany(
+        "INSERT INTO holdings (symbol, is_held) VALUES (?, 1)",
+        [(s,) for s in sorted(held)],
     )
     conn.commit()
     conn.close()

@@ -1,256 +1,109 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from src.database import init_db, add_ticker, remove_ticker, get_tickers, get_all_metrics, init_holdings, toggle_holding, get_holdings, is_held
-from src.sync import sync_ticker, sync_all
-from src.fetcher import fetch_ticker_data
-
-st.set_page_config(page_title="Stock Dashboard", page_icon="📈", layout="wide")
-
-# Global styling
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700&display=swap');
-
-    :root {
-        --bg: #070a14;
-        --panel: #111827;
-        --panel-2: #0f172a;
-        --border: rgba(148, 163, 184, 0.18);
-        --text: #e2e8f0;
-        --muted: #94a3b8;
-        --accent: #38bdf8;
-        --accent-2: #a855f7;
-        --glow: rgba(56, 189, 248, 0.18);
-    }
-
-    .stApp {
-        background: radial-gradient(circle at 20% 0%, #101828 0%, #070a14 55%, #05070f 100%);
-        color: var(--text);
-        font-family: 'Manrope', sans-serif;
-    }
-
-    h1, h2, h3, h4 {
-        font-family: 'Syne', sans-serif;
-        letter-spacing: -0.03em;
-    }
-
-    section[data-testid="stSidebar"] {
-        background: #0b1020;
-        border-right: 1px solid var(--border);
-    }
-
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3,
-    section[data-testid="stSidebar"] h4 {
-        color: var(--text);
-    }
-
-    .block-container {
-        padding-top: 1.75rem;
-        padding-bottom: 4rem;
-    }
-
-    div[data-testid="metric-container"] {
-        background: linear-gradient(160deg, rgba(17, 24, 39, 0.95), rgba(15, 23, 42, 0.9));
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 16px;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.45);
-    }
-
-    .hero {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 20px;
-        padding: 24px 28px;
-        border-radius: 22px;
-        background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.95));
-        border: 1px solid rgba(148, 163, 184, 0.15);
-        box-shadow: 0 18px 34px rgba(15, 23, 42, 0.55);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .hero::after {
-        content: "";
-        position: absolute;
-        right: -120px;
-        top: -80px;
-        width: 260px;
-        height: 260px;
-        background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 70%);
-        opacity: 0.7;
-    }
-
-    .hero h1 {
-        margin: 0;
-        font-size: 2.2rem;
-    }
-
-    .hero p {
-        margin: 6px 0 0;
-        color: var(--muted);
-    }
-
-    .hero-pill {
-        padding: 8px 14px;
-        border-radius: 999px;
-        background: rgba(56, 189, 248, 0.12);
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        color: #bae6fd;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-    }
-
-    .stButton>button {
-        border-radius: 12px;
-        background: linear-gradient(135deg, #38bdf8, #6366f1);
-        color: #0b1020;
-        border: none;
-        font-weight: 600;
-        padding: 0.55rem 1rem;
-        box-shadow: 0 10px 18px rgba(56, 189, 248, 0.25);
-    }
-
-    .stButton>button:hover {
-        filter: brightness(1.05);
-        transform: translateY(-1px);
-    }
-
-    input, textarea {
-        background: rgba(15, 23, 42, 0.9) !important;
-        color: var(--text) !important;
-        border-radius: 12px !important;
-        border: 1px solid rgba(148, 163, 184, 0.2) !important;
-    }
-
-    div[data-baseweb="select"] > div {
-        background: rgba(15, 23, 42, 0.9) !important;
-        border-radius: 12px !important;
-        border: 1px solid rgba(148, 163, 184, 0.2) !important;
-        color: var(--text) !important;
-    }
-
-    .stRadio [role="radiogroup"] {
-        gap: 10px;
-    }
-
-    .stRadio div[role="radio"] {
-        background: rgba(15, 23, 42, 0.6);
-        border-radius: 999px;
-        padding: 6px 10px;
-    }
-
-    .section-title {
-        font-size: 1.2rem;
-        font-weight: 700;
-        margin: 26px 0 10px;
-        color: #e2e8f0;
-    }
-
-    .section-subtitle {
-        color: var(--muted);
-        margin-bottom: 12px;
-    }
-
-    .stat-card {
-        background: linear-gradient(160deg, rgba(17, 24, 39, 0.95), rgba(8, 14, 28, 0.9));
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        border-radius: 16px;
-        padding: 16px 18px;
-        box-shadow: 0 14px 26px rgba(2, 6, 23, 0.55);
-    }
-
-    .stat-label {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.18em;
-        color: var(--muted);
-    }
-
-    .stat-value {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #e2e8f0;
-        margin-top: 6px;
-    }
-
-    .stat-sub {
-        font-size: 0.75rem;
-        color: var(--muted);
-        margin-top: 6px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True,
+from src.database import (
+    init_db,
+    add_ticker,
+    remove_ticker,
+    get_tickers,
+    get_all_metrics,
+    get_stale_tickers,
+    get_holdings,
+    set_holdings,
+)
+from src.sync import add_and_sync, sync_many
+from src.fetcher import fetch_history
+from src.ui import (
+    inject_css,
+    fmt,
+    fmt_large_number,
+    time_ago,
+    cell_style,
+    badge,
+    score_tier,
+    pillar_tier,
+    TIERS,
+    RATING_TIER,
+    RATING_ORDER,
 )
 
-
-def _format_large_number(val):
-    if val is None or (isinstance(val, float) and val != val):
-        return "—"
-    try:
-        val = float(val)
-    except (TypeError, ValueError):
-        return str(val)
-    abs_val = abs(val)
-    if abs_val >= 1_000_000_000_000:
-        return f"${val / 1_000_000_000_000:.2f}T"
-    if abs_val >= 1_000_000_000:
-        return f"${val / 1_000_000_000:.1f}B"
-    if abs_val >= 1_000_000:
-        return f"${val / 1_000_000:.1f}M"
-    if abs_val >= 1_000:
-        return f"${val / 1_000:.1f}K"
-    return f"${val:,.0f}"
-
-
-def _numeric_threshold_filter(label: str, series: pd.Series, key: str):
-    clean = pd.to_numeric(series, errors="coerce").dropna()
-    if clean.empty:
-        return None
-    min_val = float(clean.min())
-    max_val = float(clean.max())
-    if min_val == max_val:
-        st.caption(f"{label}: {min_val:.2f}")
-        return (min_val, max_val)
-    st.markdown(f"**{label}**")
-    st.caption(f"Range: {min_val:.2f} — {max_val:.2f}")
-    min_col, max_col = st.columns(2)
-    with min_col:
-        use_min = st.checkbox("Min", key=f"{key}_min_on")
-        min_input = st.number_input("Min value", min_value=min_val, max_value=max_val, value=min_val, key=f"{key}_min_val")
-    with max_col:
-        use_max = st.checkbox("Max", key=f"{key}_max_on")
-        max_input = st.number_input("Max value", min_value=min_val, max_value=max_val, value=max_val, key=f"{key}_max_val")
-    min_output = min_input if use_min else None
-    max_output = max_input if use_max else None
-    if min_output is None and max_output is None:
-        return None
-    return (min_output, max_output)
-
-
-
-# Initialize database
+st.set_page_config(page_title="Stock Dashboard", page_icon="📈", layout="wide")
+inject_css(st)
 init_db()
-init_holdings()
 
-if "auto_sync_done" not in st.session_state:
-    if get_tickers():
-        with st.spinner("Auto-syncing tickers..."):
-            sync_all()
-    st.session_state.auto_sync_done = True
+STALE_HOURS = 24
+
+# ---------------------------------------------------------------------------
+# Cached data access — the dashboard renders instantly from SQLite; network
+# syncs only happen when explicitly requested.
+# ---------------------------------------------------------------------------
 
 
-# Sidebar
+@st.cache_data(ttl=120, show_spinner=False)
+def load_metrics() -> pd.DataFrame:
+    rows = get_all_metrics()
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_history(symbol: str, period: str = "1y"):
+    return fetch_history(symbol, period)
+
+
+def invalidate_data():
+    load_metrics.clear()
+
+
+def flash(message: str, kind: str = "success"):
+    st.session_state["flash"] = (kind, message)
+
+
+def show_flash(container):
+    if "flash" in st.session_state:
+        kind, message = st.session_state.pop("flash")
+        getattr(container, kind)(message)
+
+
+def run_sync(symbols, container) -> dict:
+    """Sync tickers concurrently with a progress bar in `container`."""
+    symbols = sorted(set(symbols))
+    if not symbols:
+        return {"synced": [], "failed": []}
+    bar = container.progress(0.0, text=f"Syncing {len(symbols)} tickers…")
+
+    def cb(done, total, sym):
+        bar.progress(done / total, text=f"Syncing {done}/{total} · {sym}")
+
+    results = sync_many(symbols, progress_cb=cb)
+    bar.empty()
+    invalidate_data()
+    return results
+
+
+def sync_and_report(symbols, container):
+    results = run_sync(symbols, container)
+    n_ok, n_fail = len(results["synced"]), len(results["failed"])
+    if n_fail:
+        failed = ", ".join(results["failed"][:12]) + ("…" if n_fail > 12 else "")
+        flash(f"Synced {n_ok} tickers · {n_fail} failed ({failed}). Failed tickers stay on the watchlist and retry on the next sync.", "warning")
+    else:
+        flash(f"Synced {n_ok} tickers.")
+    st.rerun()
+
+
+def _style_fig(fig, height=360):
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=height,
+        margin=dict(l=10, r=10, t=42, b=10),
+        font=dict(family="Inter, sans-serif", size=12),
+    )
+    return fig
+
 
 def _extract_csv_symbols(upload_df: pd.DataFrame) -> list[str]:
     if upload_df is None or upload_df.empty:
@@ -265,173 +118,139 @@ def _extract_csv_symbols(upload_df: pd.DataFrame) -> list[str]:
     series = upload_df[col].astype(str).str.strip().str.upper()
     return sorted({s for s in series if s and s not in ("NAN", "NONE")})
 
-st.sidebar.header("Controls")
 
-# Add ticker
-new_ticker = st.sidebar.text_input("Add Ticker", placeholder="e.g., AAPL").strip().upper()
-if st.sidebar.button("Add") and new_ticker:
-    with st.spinner(f"Fetching {new_ticker}..."):
-        if sync_ticker(new_ticker):
-            st.sidebar.success(f"Added {new_ticker}")
-            st.rerun()
-        else:
-            st.sidebar.error(f"Could not fetch {new_ticker}")
+# ---------------------------------------------------------------------------
+# Sidebar — watchlist & data management
+# ---------------------------------------------------------------------------
 
-# Bulk add
-bulk_tickers = st.sidebar.text_area("Bulk Add (comma-separated)", placeholder="AAPL, MSFT, NVDA, TSLA")
-if st.sidebar.button("Bulk Add") and bulk_tickers:
-    symbols = [s.strip().upper() for s in bulk_tickers.split(",") if s.strip()]
-    progress = st.sidebar.progress(0)
-    for i, sym in enumerate(symbols):
-        sync_ticker(sym)
-        progress.progress((i + 1) / len(symbols))
-    st.sidebar.success(f"Added {len(symbols)} tickers")
-    st.rerun()
+st.sidebar.markdown("### ⚙️ Manage")
+show_flash(st.sidebar)
 
-# CSV import
-st.sidebar.markdown("---")
-st.sidebar.subheader("📥 Import from CSV")
-uploaded_csv = st.sidebar.file_uploader("Upload CSV", type=["csv"], key="csv_upload")
-if uploaded_csv is not None:
-    try:
-        upload_df = pd.read_csv(uploaded_csv)
-    except Exception:
-        upload_df = None
-        st.sidebar.error("Unable to read CSV. Please upload a valid file.")
-    if upload_df is not None:
-        csv_symbols = _extract_csv_symbols(upload_df)
-        st.sidebar.caption(f"Found {len(csv_symbols)} unique symbols.")
-        import_now = st.sidebar.button("Import CSV", key="btn_import_csv")
-        if import_now:
-            existing = set(get_tickers())
-            to_add = [s for s in csv_symbols if s not in existing]
-            skipped = [s for s in csv_symbols if s in existing]
-            progress = st.sidebar.progress(0) if to_add else None
-            synced = []
-            failed = []
-            for idx, sym in enumerate(to_add):
-                if sync_ticker(sym):
-                    synced.append(sym)
-                else:
-                    failed.append(sym)
-                if progress:
-                    progress.progress((idx + 1) / len(to_add))
-            st.sidebar.success(
-                f"Imported {len(synced)} tickers, skipped {len(skipped)} duplicates, failed {len(failed)}"
-            )
-            st.rerun()
-
-
-# Sync controls
-st.sidebar.markdown("---")
-if st.sidebar.button("🔄 Sync All Now"):
-    with st.spinner("Syncing all tickers..."):
-        synced = sync_all()
-    st.sidebar.success(f"Synced {len(synced)} tickers")
-    st.rerun()
-
-# Auto-refresh
-auto_refresh = st.sidebar.checkbox("Auto-refresh every 5 min", value=False)
-if auto_refresh:
-    st.sidebar.markdown("*(Manual refresh recommended for now)*")
-
-# Remove ticker
-st.sidebar.markdown("---")
-st.sidebar.subheader("Remove Ticker")
-to_remove = st.sidebar.selectbox("Select ticker", [""] + get_tickers())
-if st.sidebar.button("Remove") and to_remove:
-    remove_ticker(to_remove)
-    st.sidebar.success(f"Removed {to_remove}")
-    st.rerun()
-
-# Portfolio / Holdings
-st.sidebar.markdown("---")
-st.sidebar.subheader("🎯 My Holdings")
 all_symbols = get_tickers()
-current_holdings = get_holdings()
 
-# Initialize session state for batched selections
-if "pending_holdings" not in st.session_state:
-    st.session_state.pending_holdings = set(current_holdings)
-
-with st.sidebar.expander(f"Select Holdings ({len(current_holdings)} selected)", expanded=False):
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("✅ Select All", use_container_width=True, key="btn_select_all"):
-            st.session_state.pending_holdings = set(all_symbols)
-            st.rerun()
-    with col_b:
-        if st.button("❌ Clear All", use_container_width=True, key="btn_clear_all"):
-            st.session_state.pending_holdings = set()
-            st.rerun()
-
-    st.markdown("---")
-    # Build a 3-column checkbox grid for rapid multi-select
-    cols_per_row = 3
-    for i in range(0, len(all_symbols), cols_per_row):
-        row_symbols = all_symbols[i:i + cols_per_row]
-        cols = st.columns(cols_per_row)
-        for j, sym in enumerate(row_symbols):
-            with cols[j]:
-                is_checked = st.checkbox(
-                    sym,
-                    value=sym in st.session_state.pending_holdings,
-                    key=f"hold_{sym}",
-                )
-                if is_checked:
-                    st.session_state.pending_holdings.add(sym)
-                else:
-                    st.session_state.pending_holdings.discard(sym)
-
-    # Apply button — only writes to DB when clicked
-    pending = st.session_state.pending_holdings
-    changed = pending != set(current_holdings)
-    st.markdown("---")
-    apply_col, count_col = st.columns([1, 2])
-    with apply_col:
-        apply_btn = st.button(
-            "🔄 Apply",
-            type="primary",
-            use_container_width=True,
-            disabled=not changed,
-            key="btn_apply_holdings",
-        )
-    with count_col:
-        st.caption(f"**{len(pending)}** selected")
-
-    if apply_btn:
-        # Write pending selections to DB
-        for sym in pending:
-            if sym not in current_holdings:
-                toggle_holding(sym, True)
-        for sym in current_holdings:
-            if sym not in pending:
-                toggle_holding(sym, False)
-        st.session_state.pending_holdings = set(get_holdings())
-        st.success(f"Saved: {len(pending)} holdings")
+with st.sidebar.expander("➕ Add tickers", expanded=not all_symbols):
+    with st.form("add_ticker_form", clear_on_submit=True):
+        new_ticker = st.text_input("Ticker symbol", placeholder="e.g. AAPL")
+        add_clicked = st.form_submit_button("Add & sync", type="primary", use_container_width=True)
+    if add_clicked and new_ticker.strip():
+        sym = new_ticker.strip().upper()
+        with st.spinner(f"Adding {sym}…"):
+            ok = add_and_sync(sym)
+        invalidate_data()
+        if ok:
+            flash(f"Added and synced {sym}.")
+        else:
+            flash(f"{sym} saved to watchlist, but data fetch failed — it will retry on the next sync. Remove it below if the symbol is wrong.", "warning")
         st.rerun()
 
-# Main dashboard
-metrics = get_all_metrics()
+    bulk = st.text_area("Bulk add (comma-separated)", placeholder="AAPL, MSFT, NVDA")
+    if st.button("Add all", use_container_width=True) and bulk.strip():
+        symbols = sorted({s.strip().upper() for s in bulk.split(",") if s.strip()})
+        for sym in symbols:
+            add_ticker(sym)  # persist before any network call
+        sync_and_report(symbols, st.sidebar)
 
-if not metrics:
-    st.info("No tickers tracked yet. Add some from the sidebar!")
+with st.sidebar.expander("📥 Import CSV"):
+    uploaded_csv = st.file_uploader("CSV with a Symbol/Ticker column", type=["csv"], key="csv_upload")
+    if uploaded_csv is not None:
+        try:
+            upload_df = pd.read_csv(uploaded_csv)
+        except Exception:
+            upload_df = None
+            st.error("Unable to read CSV. Please upload a valid file.")
+        if upload_df is not None:
+            csv_symbols = _extract_csv_symbols(upload_df)
+            existing = set(all_symbols)
+            new_syms = [s for s in csv_symbols if s not in existing]
+            st.caption(f"{len(csv_symbols)} symbols found · {len(new_syms)} new")
+            if st.button("Import", use_container_width=True, disabled=not new_syms):
+                for sym in new_syms:
+                    add_ticker(sym)
+                sync_and_report(new_syms, st.sidebar)
+
+with st.sidebar.expander("🎯 My holdings"):
+    current_holdings = get_holdings()
+    picked = st.multiselect(
+        "Tickers you own",
+        options=all_symbols,
+        default=[s for s in current_holdings if s in all_symbols],
+        key="holdings_picker",
+    )
+    if st.button("Save holdings", use_container_width=True, disabled=set(picked) == set(current_holdings)):
+        set_holdings(picked)
+        invalidate_data()
+        flash(f"Saved {len(picked)} holdings.")
+        st.rerun()
+
+with st.sidebar.expander("🗑️ Remove tickers"):
+    to_remove = st.multiselect("Select tickers", all_symbols, key="remove_picker")
+    if st.button("Remove selected", use_container_width=True, disabled=not to_remove):
+        for sym in to_remove:
+            remove_ticker(sym)
+        invalidate_data()
+        flash(f"Removed {len(to_remove)} tickers.")
+        st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🔄 Data")
+
+stale = get_stale_tickers(STALE_HOURS)
+if all_symbols:
+    st.sidebar.caption(
+        f"{len(all_symbols)} tickers tracked · {len(stale)} stale (>{STALE_HOURS}h)"
+    )
+sync_cols = st.sidebar.columns(2)
+if sync_cols[0].button("Sync stale", use_container_width=True, disabled=not stale):
+    sync_and_report(stale, st.sidebar)
+if sync_cols[1].button("Sync all", use_container_width=True, disabled=not all_symbols):
+    sync_and_report(all_symbols, st.sidebar)
+
+# ---------------------------------------------------------------------------
+# Load data
+# ---------------------------------------------------------------------------
+
+df = load_metrics()
+
+last_sync = pd.to_datetime(df["last_updated"], errors="coerce").max() if "last_updated" in df.columns and not df.empty else None
+last_sync_label = time_ago(last_sync) if last_sync is not None and pd.notna(last_sync) else "never"
+
+st.markdown(
+    f"""
+    <div class="app-header">
+        <div>
+            <h1>📈 Stock Dashboard</h1>
+            <div class="sub">Coverage-aware 5-pillar buy scores · free Yahoo Finance data</div>
+        </div>
+        <div class="meta">
+            {len(df) if not df.empty else 0} tickers tracked<br>
+            Last sync: {last_sync_label}
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+if df.empty:
+    st.info("No tickers tracked yet — add some from the sidebar to get started.")
     st.stop()
 
-# Format for display
-df = pd.DataFrame(metrics)
+if stale and len(stale) == len(all_symbols):
+    st.warning(f"All data is older than {STALE_HOURS}h (or never synced). Use **Sync stale** in the sidebar to refresh — the dashboard stays usable while you decide.")
 
-# Rename columns for display
-column_map = {
+# ---------------------------------------------------------------------------
+# Prepare display frame
+# ---------------------------------------------------------------------------
+
+COLUMN_MAP = {
     "symbol": "Symbol",
     "name": "Name",
     "sector": "Sector",
     "price": "Price",
     "market_cap": "Market Cap",
     "pe_trailing": "Trailing P/E",
-    "pe_forward": "Fwd PE",
+    "pe_forward": "Fwd P/E",
     "peg_ratio": "PEG",
-    "projected_cagr": "Analyst Est Growth %",
+    "projected_cagr": "Est Growth %",
     "beta": "Beta",
     "target_upside": "Target Upside %",
     "week_52_high": "52W High",
@@ -439,1020 +258,439 @@ column_map = {
     "rsi_14": "RSI(14)",
     "volume_20d_avg": "Vol 20d",
     "volume_50d_avg": "Vol 50d",
-    "price_vs_50ma": "vs 50MA (%)",
-    "price_vs_200ma": "vs 200MA (%)",
+    "price_vs_50ma": "vs 50MA %",
+    "price_vs_200ma": "vs 200MA %",
     "macd_signal": "MACD",
     "bb_position": "BB Position",
-    "roc_10d": "ROC(10d)",
+    "roc_10d": "ROC 10d",
     "exhaustion_level": "Exhaustion",
-    "technical_score": "Tech Score",
-    "commentary_score": "Comm Score",
     "buy_score": "Buy Score",
     "rating_band": "Rating",
-    "data_coverage": "Data Coverage %",
-    "score_mode": "Score Mode",
+    "data_coverage": "Coverage %",
+    "score_mode": "Mode",
     "score_valuation": "Valuation",
     "score_growth": "Growth",
     "score_profitability": "Profit",
     "score_momentum": "Momentum",
     "score_risk": "Risk",
-    "adj_technical": "Tech Δ",
-    "adj_commentary": "Comm Δ",
-    "adj_target": "Target Δ",
-    "adj_surprise": "Surprise Δ",
-    "adj_coverage": "Coverage Δ",
-    "adj_peg": "PEG Δ",
-    "adj_growth": "CAGR Δ",
-    "adj_pe_traj": "PE Trj Δ",
+    "adj_peg": "Value Δ",
+    "adj_target": "Analyst Δ",
+    "adj_pe_traj": "Trajectory Δ",
     "adj_exhaustion": "Exhaust Δ",
     "last_updated": "Updated",
 }
 
-display_df = df.rename(columns=column_map)
-
-# Reorder columns and define view modes
-full_cols = [
-    "Sector", "Symbol", "Name", "Market Cap",
-    # Key headline metrics
-    "Buy Score", "Rating", "Score Mode", "Data Coverage %", "Analyst Est Growth %", "Target Upside %",
-    # 5 Pillars
-    "Valuation", "Growth", "Profit", "Momentum", "Risk",
-    # Key Adjustment Deltas
-    "PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
-    # Legacy Scores
-    "Tech Score", "Comm Score",
-    # Core Financial Metrics
-    "Price", "Trailing P/E", "Fwd PE", "PEG", "Beta",
-    "52W High", "52W Low",
-    "RSI(14)", "Exhaustion",
-    "vs 50MA (%)", "vs 200MA (%)", "MACD", "BB Position", "ROC(10d)",
-    "Vol 20d", "Vol 50d", "Updated"
-]
-
-summary_cols = [
-    "Sector", "Symbol", "Name", "Market Cap",
-    "Buy Score", "Rating", "Score Mode", "Data Coverage %", "Analyst Est Growth %", "Target Upside %",
-    "Valuation", "Growth", "Profit", "Momentum", "Risk",
-    "Price", "Updated",
-]
-
-score_cols = [
-    "Sector", "Symbol", "Name", "Buy Score", "Rating", "Score Mode", "Data Coverage %",
-    "Valuation", "Growth", "Profit", "Momentum", "Risk",
-    "PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
-    "Tech Score", "Comm Score", "Updated",
-]
-
-technical_cols = [
-    "Sector", "Symbol", "Name", "Score Mode", "Data Coverage %", "Price", "Market Cap",
-    "RSI(14)", "Exhaustion", "vs 50MA (%)", "vs 200MA (%)",
-    "MACD", "BB Position", "ROC(10d)", "Vol 20d", "Vol 50d", "Updated",
-]
-
-view_cols_map = {
-    "Summary": summary_cols,
-    "Scores": score_cols,
-    "Technicals": technical_cols,
-    "Full": full_cols,
-}
-
-# Preserve is_held for filtering/sorting even though we don't display it as a column
-preserve_cols = [c for c in full_cols if c in display_df.columns]
-if "is_held" in display_df.columns and "is_held" not in preserve_cols:
-    preserve_cols.append("is_held")
-display_df = display_df[preserve_cols]
-
-# Fill empty sectors
+display_df = df.rename(columns=COLUMN_MAP)
 if "Sector" in display_df.columns:
     display_df["Sector"] = display_df["Sector"].fillna("Unknown").replace("", "Unknown")
 
-# ---- DASHBOARD SNAPSHOT ----
-st.markdown("<div class='section-title'>Portfolio Snapshot</div>", unsafe_allow_html=True)
-
-stats_cols = st.columns(4)
-
-holding_count = int(display_df["is_held"].sum()) if "is_held" in display_df.columns else 0
-avg_buy_score = display_df["Buy Score"].mean() if "Buy Score" in display_df.columns else None
-avg_buy_label = f"{avg_buy_score:.1f}" if avg_buy_score == avg_buy_score else "—"
-strong_buys = display_df[display_df["Rating"] == "Strong Buy"].shape[0] if "Rating" in display_df.columns else 0
-
-market_caps = display_df["Market Cap"] if "Market Cap" in display_df.columns else pd.Series([], dtype=float)
-market_cap_total = market_caps.dropna().sum() if len(market_caps) else None
-coverage_pct = (market_caps.notna().mean() * 100) if len(market_caps) else 0
-
-last_sync = None
-if "Updated" in display_df.columns:
-    last_sync = pd.to_datetime(display_df["Updated"], errors="coerce").max()
-last_sync_label = last_sync.strftime("%b %d · %H:%M") if pd.notna(last_sync) else "—"
-
-with stats_cols[0]:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-label">Tracked Tickers</div>
-            <div class="stat-value">{len(display_df):,}</div>
-            <div class="stat-sub">{holding_count} holdings tagged</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with stats_cols[1]:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-label">Avg Buy Score</div>
-            <div class="stat-value">{avg_buy_label}</div>
-            <div class="stat-sub">{strong_buys} strong buys</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with stats_cols[2]:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-label">Total Market Cap</div>
-            <div class="stat-value">{_format_large_number(market_cap_total)}</div>
-            <div class="stat-sub">{coverage_pct:.0f}% coverage</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with stats_cols[3]:
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-label">Last Sync</div>
-            <div class="stat-value">{last_sync_label}</div>
-            <div class="stat-sub">Auto-sync on launch</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-st.markdown("<div class='section-title'>Portfolio Overview</div>", unsafe_allow_html=True)
-st.markdown("<div class='section-subtitle'>Filter, sort, and explore your tracked universe.</div>", unsafe_allow_html=True)
-
-
-# ---- SORT & FILTER CONTROLS ----
-
-# View mode + display type
-view_col, display_col, holdings_col = st.columns([1.2, 1.1, 1.4])
-with view_col:
-    view_mode = st.selectbox("View mode", list(view_cols_map.keys()), index=0)
-with display_col:
-    view_type = st.radio("Display", ["Table", "Cards"], horizontal=True)
-with holdings_col:
-    show_only_holdings = st.checkbox("🎯 Show only my holdings", value=False)
-
-active_cols = [
-    c for c in view_cols_map.get(view_mode, full_cols)
-    if c in display_df.columns and c != "is_held"
-]
-
-sort_col1, sort_col2, filter_col = st.columns([2, 1, 2])
-with sort_col1:
-    sort_options = [c for c in active_cols if c != "Updated"]
-    if not sort_options:
-        sort_options = [c for c in display_df.columns if c not in ("Updated", "is_held")]
-    sort_by = st.selectbox(
-        "Sort by",
-        sort_options,
-        index=sort_options.index("Buy Score") if "Buy Score" in sort_options else 0,
-    )
-with sort_col2:
-    sort_asc = st.radio("Order", ["↓ Descending", "↑ Ascending"], index=0)
-with filter_col:
-    all_sectors = sorted(display_df["Sector"].dropna().unique().tolist()) if "Sector" in display_df.columns else []
-    sector_filter = st.multiselect("Filter by Sector", all_sectors, default=all_sectors)
-
-# Rating band filter
-rating_filter = []
-all_ratings = []
-if "Rating" in display_df.columns:
-    all_ratings = ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
-    rating_filter = st.multiselect("Filter by Rating", all_ratings, default=all_ratings, key="rating_filter")
-
-# Score mode filter
-score_mode_filter = []
-if "Score Mode" in display_df.columns:
-    all_modes = sorted(display_df["Score Mode"].dropna().unique().tolist())
-    if all_modes:
-        score_mode_filter = st.multiselect(
-            "Filter by Score Mode", all_modes, default=all_modes, key="score_mode_filter"
-        )
-
-# Advanced numeric filters
-numeric_filters = {}
-with st.expander("Advanced Filters", expanded=False):
-    filter_options = {
-        "PEG Ratio": "PEG",
-        "P/E (Trailing)": "Trailing P/E",
-        "P/E (Forward)": "Fwd PE",
-        "Growth Rate %": "Analyst Est Growth %",
-        "RSI (14)": "RSI(14)",
-        "Exhaustion": "Exhaustion",
-        "Technical Score": "Tech Score",
-        "Commentary Score": "Comm Score",
-        "Data Coverage %": "Data Coverage %",
-        "Valuation Score": "Valuation",
-        "Growth Score": "Growth",
-        "Profit Score": "Profit",
-        "Momentum Score": "Momentum",
-        "Risk Score": "Risk",
-        "Market Cap": "Market Cap",
-        "Buy Score": "Buy Score",
-        "Target Upside %": "Target Upside %",
-    }
-    active_filters = st.multiselect("Filter metrics", list(filter_options.keys()))
-    for label in active_filters:
-        col = filter_options[label]
-        if col not in display_df.columns:
-            continue
-        range_vals = _numeric_threshold_filter(label, display_df[col], key=f"filter_{col}")
-        if range_vals:
-            numeric_filters[col] = range_vals
-
-
-
-if "compare_selected" not in st.session_state:
-    st.session_state.compare_selected = set()
-
-if "Symbol" in display_df.columns:
-    valid_symbols = set(display_df["Symbol"].dropna())
-    st.session_state.compare_selected = {s for s in st.session_state.compare_selected if s in valid_symbols}
-
-compare_symbols = sorted(st.session_state.compare_selected)
-
-if view_type != "Cards":
-    st.caption("Switch to Cards view to select tickers for comparison.")
-else:
-    st.caption("Use the Compare checkbox on each card to build your comparison list.")
-
-if st.button("Clear compare", key="clear_compare"):
-    st.session_state.compare_selected = set()
-    compare_symbols = []
-
-# Apply filters
-filtered_df = display_df.copy()
-if show_only_holdings and "is_held" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df["is_held"] == 1].copy()
-if sector_filter and "Sector" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df["Sector"].isin(sector_filter)].copy()
-if rating_filter and "Rating" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df["Rating"].isin(rating_filter)].copy()
-if score_mode_filter and "Score Mode" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df["Score Mode"].isin(score_mode_filter)].copy()
-
-if numeric_filters:
-    for col, (min_val, max_val) in numeric_filters.items():
-        if col not in filtered_df.columns:
-            continue
-        series = pd.to_numeric(filtered_df[col], errors="coerce")
-        if min_val is not None:
-            filtered_df = filtered_df[series >= min_val].copy()
-            series = pd.to_numeric(filtered_df[col], errors="coerce")
-        if max_val is not None:
-            filtered_df = filtered_df[series <= max_val].copy()
-
-# Apply sort — only pin held tickers to top when "Show only my holdings" is active
-ascending = sort_asc == "↑ Ascending"
-if show_only_holdings and "is_held" in filtered_df.columns:
-    filtered_df = filtered_df.sort_values(
-        by=["is_held", sort_by],
-        ascending=[False, ascending],
-        na_position="last"
-    )
-else:
-    if sort_by in filtered_df.columns:
-        filtered_df = filtered_df.sort_values(sort_by, ascending=ascending, na_position="last")
-
-if active_cols:
-    table_df = filtered_df[active_cols].copy()
-else:
-    table_df = filtered_df.copy()
-
-# ---- COLOR HELPER ----
-def _cell_style(val, col):
-    """Return CSS style string for a cell value."""
-    if col == "Buy Score":
-        if val and val >= 80: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val and val >= 65: return "background:#2e8b2e;color:#fff"
-        elif val and val >= 45: return "background:#daa520;color:#000"
-        elif val and val >= 30: return "background:#cd853f;color:#000"
-        else: return "background:#b22222;color:#fff"
-    elif col == "Rating":
-        if val == "Strong Buy": return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val == "Buy": return "background:#2e8b2e;color:#fff"
-        elif val == "Hold": return "background:#daa520;color:#000"
-        elif val == "Sell": return "background:#cd853f;color:#000"
-        elif val == "Strong Sell": return "background:#b22222;color:#fff"
-    elif col in ("Valuation", "Growth", "Profit", "Momentum", "Risk"):
-        if val and val >= 15: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val and val >= 10: return "background:#2e8b2e;color:#fff"
-        elif val and val >= 6: return "background:#daa520;color:#000"
-        elif val and val >= 3: return "background:#cd853f;color:#000"
-        else: return "background:#b22222;color:#fff"
-    elif col in ("PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
-                  "Tech Δ", "Comm Δ", "Surprise Δ", "Coverage Δ"):
-        # Adjustment deltas: positive = green (good for score), negative = red
-        if val and val >= 3: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val and val > 0: return "background:#2e8b2e;color:#fff"
-        elif val == 0: return "background:#555;color:#fff"
-        elif val and val > -3: return "background:#cd853f;color:#000"
-        else: return "background:#b22222;color:#fff"
-    elif col == "Tech Score":
-        if val == 4: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val == 3: return "background:#2e8b2e;color:#fff"
-        elif val == 2: return "background:#daa520;color:#000"
-        elif val == 1: return "background:#cd853f;color:#000"
-        else: return "background:#b22222;color:#fff"
-    elif col == "Comm Score":
-        if val == 4: return "background:#1a5f1a;color:#fff;font-weight:bold"
-        elif val == 3: return "background:#2e8b2e;color:#fff"
-        elif val == 2: return "background:#daa520;color:#000"
-        else: return "background:#b22222;color:#fff"
-    elif col == "Exhaustion":
-        if val == "Extreme": return "background:#8b0000;color:#fff;font-weight:bold"
-        elif val == "High": return "background:#cd5c5c;color:#fff"
-        elif val == "Building": return "background:#f0e68c;color:#000"
-        else: return "background:#90ee90;color:#000"
-    elif col == "RSI(14)":
-        if val and val > 70: return "color:#ff6b6b;font-weight:bold"
-        elif val and val < 30: return "color:#69db7c;font-weight:bold"
-    elif col == "Analyst Est Growth %":
-        if val and val > 20: return "color:#69db7c;font-weight:bold"
-        elif val and val > 0: return "color:#69db7c"
-        elif val and val < 0: return "color:#ff6b6b"
-    elif col == "Target Upside %":
-        if val and val > 30: return "color:#69db7c;font-weight:bold"
-        elif val and val > 15: return "color:#69db7c"
-        elif val and val < -10: return "color:#ff6b6b"
-    elif col == "Data Coverage %":
-        if val is None or (isinstance(val, float) and val != val):
-            return ""
-        if val < 60: return "color:#ff6b6b;font-weight:bold"
-        elif val < 80: return "color:#ffa94d"
-        return "color:#69db7c"
-    elif col == "Beta":
-        if val and val > 2.0: return "color:#ff6b6b;font-weight:bold"
-        elif val and val > 1.5: return "color:#ffa94d"
-        elif val and val < 0.8: return "color:#69db7c"
-    elif col in ("vs 50MA (%)", "vs 200MA (%)", "ROC(10d)"):
-        if val and val > 0: return "color:#69db7c"
-        elif val and val < 0: return "color:#ff6b6b"
-    elif col == "Sector":
-        return "font-weight:600;white-space:nowrap"
-    return ""
-
-def _fmt_market_cap(val):
-    return _format_large_number(val)
-
-
-def _fmt(val, col):
-    """Format a value for display."""
-    if val is None or (isinstance(val, float) and val != val):
-        return "—"
-    if col == "Market Cap":
-        return _fmt_market_cap(val)
-    if col in ("Price", "52W High", "52W Low"):
-        return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Trailing P/E", "Fwd PE", "PEG", "Beta", "RSI(14)"):
-        return f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("Analyst Est Growth %", "Target Upside %", "vs 50MA (%)", "vs 200MA (%)", "ROC(10d)", "Data Coverage %"):
-        return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
-    if col in ("Buy Score", "Tech Score", "Comm Score"):
-        return str(int(val)) if isinstance(val, (int, float)) else str(val)
-    if col in ("Valuation", "Growth", "Profit", "Momentum", "Risk"):
-        return f"{val:.0f}" if isinstance(val, (int, float)) else str(val)
-    if col in ("PEG Δ", "CAGR Δ", "PE Trj Δ", "Exhaust Δ", "Target Δ",
-                "Tech Δ", "Comm Δ", "Surprise Δ", "Coverage Δ"):
-        return f"{val:+.0f}" if isinstance(val, (int, float)) else str(val)
-    if col == "Vol 20d" or col == "Vol 50d":
-        return f"{val:,.0f}" if isinstance(val, (int, float)) else str(val)
-    return str(val)
-
-# ---- COMPARE SELECTED ----
-if compare_symbols:
-    compare_cols = [
-        "Symbol", "Name", "Rating", "Score Mode", "Data Coverage %", "Buy Score",
-        "Price", "Market Cap", "Analyst Est Growth %", "Target Upside %",
+VIEW_COLS = {
+    "Summary": [
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Mode", "Coverage %",
+        "Price", "Market Cap", "Est Growth %", "Target Upside %", "Updated",
+    ],
+    "Scores": [
+        "Symbol", "Name", "Sector", "Buy Score", "Rating",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
-    ]
-    compare_df = display_df[display_df["Symbol"].isin(compare_symbols)].copy()
-    compare_cols = [c for c in compare_cols if c in compare_df.columns]
-    if compare_cols:
-        compare_view = compare_df[compare_cols].copy()
-        for col in compare_view.columns:
-            compare_view[col] = compare_view[col].apply(lambda v: _fmt(v, col))
-        with st.expander("🔍 Compare Selected", expanded=True):
-            st.dataframe(compare_view, use_container_width=True, hide_index=True)
+        "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ",
+        "Mode", "Coverage %",
+    ],
+    "Technicals": [
+        "Symbol", "Name", "Sector", "Price", "RSI(14)", "Exhaustion",
+        "vs 50MA %", "vs 200MA %", "MACD", "BB Position", "ROC 10d",
+        "Vol 20d", "Vol 50d", "Updated",
+    ],
+    "Full": [
+        "Symbol", "Name", "Sector", "Buy Score", "Rating", "Mode", "Coverage %",
+        "Valuation", "Growth", "Profit", "Momentum", "Risk",
+        "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ",
+        "Price", "Market Cap", "Trailing P/E", "Fwd P/E", "PEG", "Beta",
+        "Est Growth %", "Target Upside %", "52W High", "52W Low",
+        "RSI(14)", "Exhaustion", "vs 50MA %", "vs 200MA %", "MACD",
+        "BB Position", "ROC 10d", "Vol 20d", "Vol 50d", "Updated",
+    ],
+}
 
-# ---- PORTFOLIO VIEW ----
-if len(filtered_df) > 0:
-    if view_type == "Cards":
-        st.markdown(
-            """
-            <style>
-            .portfolio-card {
-                background: linear-gradient(160deg, rgba(15, 23, 42, 0.92), rgba(8, 14, 28, 0.95));
-                border: 1px solid rgba(148, 163, 184, 0.2);
-                border-radius: 16px;
-                padding: 18px;
-                box-shadow: 0 16px 28px rgba(2, 6, 23, 0.6);
-                margin-bottom: 16px;
-            }
-            .card-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                gap: 12px;
-                margin-bottom: 8px;
-            }
-            .card-symbol {
-                font-size: 1.1em;
-                font-weight: 700;
-                color: #e2e8f0;
-            }
-            .card-name {
-                font-size: 0.8em;
-                color: #94a3b8;
-            }
-            .card-score {
-                color: #0b1020;
-                font-weight: 700;
-                padding: 6px 10px;
-                border-radius: 10px;
-                min-width: 56px;
-                text-align: center;
-                background: linear-gradient(135deg, #38bdf8, #6366f1);
-            }
-            .card-meta {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                font-size: 0.78em;
-                color: #cbd5f5;
-                margin-bottom: 10px;
-            }
-            .pillar-item {
-                margin-bottom: 8px;
-            }
-            .pillar-label {
-                display: flex;
-                justify-content: space-between;
-                font-size: 0.7em;
-                color: #94a3b8;
-                margin-bottom: 4px;
-            }
-            .pillar-bar {
-                background: rgba(148, 163, 184, 0.2);
-                border-radius: 6px;
-                height: 6px;
-                overflow: hidden;
-            }
-            .pillar-fill {
-                background: linear-gradient(90deg, #22c55e, #38bdf8);
-                height: 6px;
-                border-radius: 6px;
-            }
-            </style>
-            """,
+
+def render_table(table_df: pd.DataFrame, held_symbols: set):
+    cols = table_df.columns.tolist()
+    parts = ['<div class="dash-table-wrap"><table class="dash-table"><thead><tr>']
+    for col in cols:
+        parts.append(f"<th>{col}</th>")
+    parts.append("</tr></thead><tbody>")
+    for _, row in table_df.iterrows():
+        parts.append("<tr>")
+        symbol = row.get("Symbol")
+        for col in cols:
+            val = row[col]
+            style = cell_style(val, col)
+            text = time_ago(val) if col == "Updated" else fmt(val, col)
+            if col == "Symbol" and symbol in held_symbols:
+                text = f"🎯 {text}"
+            parts.append(f'<td style="{style}">{text}</td>')
+        parts.append("</tr>")
+    parts.append("</tbody></table></div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+
+
+def render_cards(cards_df: pd.DataFrame, held_symbols: set):
+    card_cols = st.columns(3)
+    for idx, (_, row) in enumerate(cards_df.iterrows()):
+        with card_cols[idx % 3]:
+            symbol = row.get("Symbol", "")
+            buy = row.get("Buy Score")
+            tier = TIERS[score_tier(buy)]
+            rating = row.get("Rating") or "—"
+            held_mark = " 🎯" if symbol in held_symbols else ""
+
+            pillar_html = ""
+            for label in ("Valuation", "Growth", "Profit", "Momentum", "Risk"):
+                value = row.get(label)
+                if value is None or (isinstance(value, float) and value != value):
+                    width, display_val, color = 0, "—", TIERS["neutral"]["fg"]
+                else:
+                    width = max(0, min(float(value) / 20 * 100, 100))
+                    display_val = f"{float(value):.0f}/20"
+                    color = TIERS[pillar_tier(value)]["fg"]
+                pillar_html += (
+                    f"<div class='pillar-row'><span>{label}</span><span>{display_val}</span></div>"
+                    f"<div class='pillar-track'><div class='pillar-fill' style='width:{width:.0f}%;background:{color};'></div></div>"
+                )
+
+            st.markdown(
+                f"""
+                <div class="tcard">
+                    <div class="head">
+                        <div>
+                            <div class="sym">{symbol}{held_mark}</div>
+                            <div class="name">{row.get('Name') or ''}</div>
+                        </div>
+                        <div class="score" style="background:{tier['bg']};color:{tier['fg']};border:1px solid {tier['border']};">{fmt(buy, 'Buy Score')}</div>
+                    </div>
+                    <div>{badge(rating, RATING_TIER.get(rating, 'neutral'))} {badge(row.get('Mode') or '—')} {badge(f"Coverage {fmt(row.get('Coverage %'), 'Coverage %')}")}</div>
+                    <div class="meta">
+                        <span>Price <b>{fmt(row.get('Price'), 'Price')}</b></span>
+                        <span>Mkt cap <b>{fmt_large_number(row.get('Market Cap'))}</b></span>
+                        <span>Upside <b>{fmt(row.get('Target Upside %'), 'Target Upside %')}</b></span>
+                    </div>
+                    {pillar_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+held_symbols = set(display_df.loc[display_df["is_held"] == 1, "Symbol"]) if "is_held" in display_df.columns else set()
+
+tab_overview, tab_screener, tab_detail = st.tabs(["📊 Overview", "🔎 Screener", "📈 Ticker Detail"])
+
+# ---------------------------------------------------------------------------
+# OVERVIEW
+# ---------------------------------------------------------------------------
+
+with tab_overview:
+    scored = display_df.dropna(subset=["Buy Score"]) if "Buy Score" in display_df.columns else display_df.iloc[0:0]
+    avg_buy = scored["Buy Score"].mean() if not scored.empty else None
+    strong_buys = int((scored["Rating"] == "Strong Buy").sum()) if "Rating" in scored.columns else 0
+    buys = int((scored["Rating"] == "Buy").sum()) if "Rating" in scored.columns else 0
+    unsynced = len(display_df) - len(scored)
+    total_mcap = display_df["Market Cap"].dropna().sum() if "Market Cap" in display_df.columns else None
+
+    kpis = [
+        ("Tracked tickers", f"{len(display_df):,}", f"{len(held_symbols)} holdings · {unsynced} awaiting sync"),
+        ("Avg buy score", f"{avg_buy:.1f}" if avg_buy == avg_buy and avg_buy is not None else "—", f"{len(scored)} scored"),
+        ("Buy-rated", f"{strong_buys + buys}", f"{strong_buys} strong buy · {buys} buy"),
+        ("Combined mkt cap", fmt_large_number(total_mcap), "tracked universe"),
+        ("Last sync", last_sync_label, f"{len(stale)} stale tickers"),
+    ]
+    kpi_cols = st.columns(len(kpis))
+    for col, (label, value, sub) in zip(kpi_cols, kpis):
+        col.markdown(
+            f'<div class="kpi"><div class="label">{label}</div><div class="value">{value}</div><div class="sub">{sub}</div></div>',
             unsafe_allow_html=True,
         )
 
-        card_cols = st.columns(3)
-        for idx, (_, row) in enumerate(filtered_df.iterrows()):
-            with card_cols[idx % 3]:
-                symbol = row.get("Symbol", "")
-                name = row.get("Name", "")
-                rating = row.get("Rating") or "—"
-                buy = row.get("Buy Score")
-                buy_score_text = _fmt(buy, "Buy Score")
-                price_text = _fmt(row.get("Price"), "Price")
-                market_cap_text = _fmt_market_cap(row.get("Market Cap"))
-                score_mode = row.get("Score Mode") or "—"
-                coverage_text = _fmt(row.get("Data Coverage %"), "Data Coverage %")
-
-
-                if symbol:
-                    compare_col, remove_col = st.columns([1, 1])
-                    with compare_col:
-                        compare_checked = symbol in st.session_state.compare_selected
-                        compare_val = st.checkbox("Compare", value=compare_checked, key=f"compare_{symbol}")
-                    with remove_col:
-                        remove_clicked = st.button("Remove", key=f"remove_{symbol}", use_container_width=True)
-                    if compare_val:
-                        st.session_state.compare_selected.add(symbol)
-                    else:
-                        st.session_state.compare_selected.discard(symbol)
-                    if remove_clicked:
-                        remove_ticker(symbol)
-                        st.session_state.compare_selected.discard(symbol)
-                        if "pending_holdings" in st.session_state:
-                            st.session_state.pending_holdings.discard(symbol)
-                        st.rerun()
-
-
-                score_color = "#1a5f1a" if buy and buy >= 80 else "#2e8b2e" if buy and buy >= 65 else "#daa520" if buy and buy >= 45 else "#cd853f" if buy and buy >= 30 else "#b22222"
-
-                pillars = [
-                    ("Valuation", row.get("Valuation")),
-                    ("Growth", row.get("Growth")),
-                    ("Profit", row.get("Profit")),
-                    ("Momentum", row.get("Momentum")),
-                    ("Risk", row.get("Risk")),
-                ]
-                pillar_html = ""
-                for label, value in pillars:
-                    if value is None or (isinstance(value, float) and value != value):
-                        display_val = "—"
-                        width = 0
-                    else:
-                        width = max(0, min(float(value) / 20 * 100, 100))
-                        display_val = f"{float(value):.0f}/20"
-                    pillar_html += f"""
-                    <div class='pillar-item'>
-                        <div class='pillar-label'>
-                            <span>{label}</span>
-                            <span>{display_val}</span>
-                        </div>
-                        <div class='pillar-bar'>
-                            <div class='pillar-fill' style='width: {width:.0f}%'></div>
-                        </div>
-                    </div>
-                    """
-
+    # --- Top picks ---
+    st.markdown('<div class="section-title">Top buy picks</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Highest composite buy scores across the tracked universe.</div>', unsafe_allow_html=True)
+    top_picks = scored.nlargest(6, "Buy Score") if not scored.empty else scored
+    if top_picks.empty:
+        st.info("No scored tickers yet — run a sync from the sidebar.")
+    else:
+        pick_cols = st.columns(len(top_picks))
+        for col, (_, row) in zip(pick_cols, top_picks.iterrows()):
+            tier = TIERS[score_tier(row["Buy Score"])]
+            rating = row.get("Rating") or "—"
+            with col:
                 st.markdown(
                     f"""
-                    <div class="portfolio-card">
-                        <div class="card-header">
-                            <div>
-                                <div class="card-symbol">{symbol}</div>
-                                <div class="card-name">{name}</div>
-                            </div>
-                            <div class="card-score" style="background:{score_color};">{buy_score_text}</div>
-                        </div>
-                        <div class="card-meta">
-                            <span>Rating: <strong>{rating}</strong></span>
-                            <span>Mode: <strong>{score_mode}</strong></span>
-                            <span>Coverage: {coverage_text}</span>
-                            <span>Price: {price_text}</span>
-                            <span>Mkt Cap: {market_cap_text}</span>
-                        </div>
-                        {pillar_html}
+                    <div class="pick">
+                        <div class="sym">{row['Symbol']}</div>
+                        <div class="name">{row.get('Name') or ''}</div>
+                        <div class="score" style="color:{tier['fg']};">{int(row['Buy Score'])}</div>
+                        {badge(rating, RATING_TIER.get(rating, 'neutral'))}
+                        <div class="sector">{row.get('Sector') or ''}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-        st.caption(f"Showing {len(filtered_df)} of {len(display_df)} tickers")
-    else:
-        cols = table_df.columns.tolist()
-        held_symbols = set()
-        if "is_held" in filtered_df.columns and "Symbol" in filtered_df.columns:
-            held_symbols = set(filtered_df.loc[filtered_df["is_held"] == 1, "Symbol"])
-
-        html = """
-        <style>
-        .dash-table-wrap {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            border-radius: 16px;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            max-height: 600px;
-            overflow-y: auto;
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(12px);
-            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
-        }
-        .dash-table {
-            border-collapse: separate;
-            border-spacing: 0;
-            font-size: 12.8px;
-            width: max-content;
-            min-width: 100%;
-        }
-        .dash-table thead th {
-            position: sticky;
-            top: 0;
-            background: rgba(15, 23, 42, 0.98);
-            color: #e2e8f0;
-            font-weight: 600;
-            padding: 10px 12px;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
-            white-space: nowrap;
-            z-index: 10;
-            text-align: left;
-        }
-        .dash-table tbody td {
-            padding: 9px 12px;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-            white-space: nowrap;
-            background: rgba(15, 23, 42, 0.72);
-            color: #e2e8f0;
-        }
-        .dash-table tbody tr:hover td {
-            background: rgba(56, 189, 248, 0.08);
-        }
-        .dash-table tbody tr:nth-child(even) td {
-            background: rgba(15, 23, 42, 0.9);
-        }
-        /* Sticky first column (Sector) */
-        .dash-table thead th:first-child,
-        .dash-table tbody td:first-child {
-            position: sticky;
-            left: 0;
-            min-width: 130px;
-            max-width: 130px;
-            z-index: 20;
-            background: rgba(15, 23, 42, 0.98);
-            border-right: 1px solid rgba(148, 163, 184, 0.2);
-        }
-        .dash-table thead th:first-child {
-            z-index: 30;
-            background: rgba(15, 23, 42, 0.98);
-        }
-        /* Sticky second column (Symbol) */
-        .dash-table thead th:nth-child(2),
-        .dash-table tbody td:nth-child(2) {
-            position: sticky;
-            left: 130px;
-            min-width: 75px;
-            max-width: 75px;
-            z-index: 20;
-            background: rgba(15, 23, 42, 0.98);
-            border-right: 1px solid rgba(148, 163, 184, 0.2);
-        }
-        .dash-table thead th:nth-child(2) {
-            z-index: 30;
-            background: rgba(15, 23, 42, 0.98);
-        }
-        </style>
-        <div class="dash-table-wrap">
-        <table class="dash-table">
-        <thead>
-        <tr>
-        """
-
-        for col in cols:
-            html += f"<th>{col}</th>"
-        html += "</tr></thead><tbody>"
-
-        for _, row in table_df.iterrows():
-            html += "<tr>"
-            symbol = row.get("Symbol")
-            held = symbol in held_symbols
-            for col in cols:
-                val = row[col]
-                style = _cell_style(val, col)
-                text = _fmt(val, col)
-                if col == "Symbol" and held:
-                    text = f"🎯 {text}"
-                html += f'<td style="{style}">{text}</td>'
-            html += "</tr>"
-
-        html += "</tbody></table></div>"
-
-        st.markdown(html, unsafe_allow_html=True)
-        st.caption(f"Showing {len(filtered_df)} of {len(display_df)} tickers")
-else:
-    st.info("No tickers match the selected filter.")
-
-# ---- TOP PICKS SECTION ----
-if "buy_score" in df.columns:
-    st.subheader("🎯 Top Buy Picks")
-    top_picks = df.nlargest(5, "buy_score")[["symbol", "name", "sector", "buy_score", "technical_score", "commentary_score", "exhaustion_level", "price"]]
-    top_picks = top_picks.rename(columns={
-        "symbol": "Symbol",
-        "name": "Name",
-        "sector": "Sector",
-        "buy_score": "Buy Score",
-        "technical_score": "Tech",
-        "commentary_score": "Comm",
-        "exhaustion_level": "Exhaustion",
-        "price": "Price",
-    })
-    # Fill empty sectors
-    if "Sector" in top_picks.columns:
-        top_picks["Sector"] = top_picks["Sector"].fillna("Unknown").replace("", "Unknown")
-    
-    pick_cols = st.columns(min(5, len(top_picks)))
-    for idx, (_, row) in enumerate(top_picks.iterrows()):
-        with pick_cols[idx]:
-            score = row["Buy Score"]
-            color = "#1a5f1a" if score >= 80 else "#2e8b2e" if score >= 65 else "#daa520" if score >= 50 else "#cd853f"
-            sector_label = row.get("Sector", "")
-            sector_html = f'<p style="margin: 3px 0; font-size: 0.7em; opacity: 0.8;">{sector_label}</p>' if sector_label else ''
-            st.markdown(f"""
-            <div style="background-color: {color}; padding: 15px; border-radius: 10px; text-align: center; color: white;">
-                <p style="margin: 0; font-size: 0.75em; opacity: 0.85; font-weight: 600;">{sector_label}</p>
-                <h3 style="margin: 2px 0; font-size: 1.2em;">{row['Symbol']}</h3>
-                <p style="margin: 5px 0; font-size: 0.85em; opacity: 0.9;">{row['Name'][:20]}</p>
-                <h2 style="margin: 0; font-size: 2em;">{score}</h2>
-                <p style="margin: 5px 0; font-size: 0.75em;">Tech {row['Tech']}/4 · Comm {row['Comm']}/4</p>
-                <p style="margin: 0; font-size: 0.75em;">{row['Exhaustion']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-# ---- SECTOR SUMMARY ----
-if "sector" in df.columns and "buy_score" in df.columns:
-    st.markdown("---")
-    st.subheader("🏛️ Sector Breakdown")
-    
-    # Compute sector stats
-    sector_stats = df.groupby("sector").agg(
-        count=("symbol", "count"),
-        avg_buy=("buy_score", "mean"),
-        top_symbol=("symbol", lambda x: x.iloc[0]),
-        top_score=("buy_score", "max"),
-    ).reset_index().sort_values("avg_buy", ascending=False)
-    
-    # Bar chart: sector avg Buy Score
-    fig_sector = go.Figure()
-    fig_sector.add_trace(go.Bar(
-        x=sector_stats["sector"],
-        y=sector_stats["avg_buy"],
-        text=[f"{v:.1f}" for v in sector_stats["avg_buy"]],
-        textposition="auto",
-        marker_color=["#1a5f1a" if v >= 65 else "#2e8b2e" if v >= 50 else "#daa520" if v >= 35 else "#b22222" for v in sector_stats["avg_buy"]],
-        name="Avg Buy Score",
-    ))
-    fig_sector.update_layout(
-        title="Average Buy Score by Sector",
-        xaxis_title="",
-        yaxis_title="Avg Buy Score",
-        template="plotly_dark",
-        height=350,
-        showlegend=False,
-    )
-    st.plotly_chart(fig_sector, use_container_width=True)
-    
-    # Sector cards
-    sec_cols = st.columns(min(6, len(sector_stats)))
-    for idx, (_, row) in enumerate(sector_stats.iterrows()):
-        with sec_cols[idx % len(sec_cols)]:
-            score = row["avg_buy"]
-            color = "#1a5f1a" if score >= 65 else "#2e8b2e" if score >= 50 else "#daa520" if score >= 40 else "#cd853f"
-            st.markdown(f"""
-            <div style="background-color: {color}; padding: 12px; border-radius: 8px; text-align: center; color: white; margin-bottom: 8px;">
-                <p style="margin: 0; font-size: 0.8em; opacity: 0.9; font-weight: 600;">{row['sector']}</p>
-                <p style="margin: 4px 0; font-size: 1.4em; font-weight: bold;">{score:.1f}</p>
-                <p style="margin: 0; font-size: 0.7em; opacity: 0.85;">{row['count']} tickers · Top: {row['top_symbol']} ({row['top_score']})</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-# Summary stats
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    st.metric("Total Tickers", len(df))
-with col2:
-    avg_buy = df["buy_score"].mean() if "buy_score" in df.columns else 0
-    st.metric("Avg Buy Score", f"{avg_buy:.0f}/100")
-with col3:
-    strong_buy = df[df["rating_band"] == "Strong Buy"].shape[0] if "rating_band" in df.columns else 0
-    st.metric("Strong Buys (80+)", strong_buy)
-with col4:
-    avg_prof = df["score_profitability"].mean() if "score_profitability" in df.columns else 0
-    st.metric("Avg Profitability", f"{avg_prof:.1f}/20")
-with col5:
-    extreme = df[df["exhaustion_level"] == "Extreme"].shape[0] if "exhaustion_level" in df.columns else 0
-    st.metric("Extreme Exhaustion", extreme)
-
-# Charts section
-st.markdown("---")
-st.subheader("Detailed View")
-
-chart_cols = st.columns([3, 1])
-with chart_cols[0]:
-    selected_symbol = st.selectbox("Select ticker for charts", df["symbol"].tolist(), key="chart_symbol")
-with chart_cols[1]:
-    remove_chart = st.button("Remove ticker", key="remove_chart", use_container_width=True)
-
-if remove_chart and selected_symbol:
-    remove_ticker(selected_symbol)
-    st.session_state.compare_selected.discard(selected_symbol)
-    if "pending_holdings" in st.session_state:
-        st.session_state.pending_holdings.discard(selected_symbol)
-    st.rerun()
-
-if selected_symbol:
-    ticker_data = fetch_ticker_data(selected_symbol)
-    if ticker_data:
-        hist = ticker_data["history"]
-
-        col_left, col_right = st.columns(2)
-
-        with col_left:
-            # Price chart
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=hist.index,
-                y=hist["Close"],
-                mode="lines",
-                name="Close",
-                line=dict(color="#00bcd4", width=2),
-            ))
-            fig.add_trace(go.Scatter(
-                x=hist.index,
-                y=hist["Close"].rolling(50).mean(),
-                mode="lines",
-                name="50 MA",
-                line=dict(color="#ff9800", width=1.5),
-            ))
-            fig.add_trace(go.Scatter(
-                x=hist.index,
-                y=hist["Close"].rolling(200).mean(),
-                mode="lines",
-                name="200 MA",
-                line=dict(color="#e91e63", width=1.5),
-            ))
-            fig.update_layout(
-                title=f"{selected_symbol} Price",
-                xaxis_title="Date",
-                yaxis_title="Price ($)",
-                template="plotly_dark",
-                height=400,
+    # --- Sector breakdown + score distribution ---
+    chart_left, chart_right = st.columns([3, 2])
+    with chart_left:
+        st.markdown('<div class="section-title">Sector breakdown</div>', unsafe_allow_html=True)
+        if not scored.empty and "Sector" in scored.columns:
+            sector_stats = (
+                scored.groupby("Sector")
+                .agg(count=("Symbol", "count"), avg_buy=("Buy Score", "mean"))
+                .reset_index()
+                .sort_values("avg_buy", ascending=True)
             )
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col_right:
-            # Volume chart
-            fig2 = go.Figure()
-            fig2.add_trace(go.Bar(
-                x=hist.index,
-                y=hist["Volume"],
-                name="Volume",
-                marker_color="#00bcd4",
-            ))
-            fig2.add_trace(go.Scatter(
-                x=hist.index,
-                y=hist["Volume"].rolling(20).mean(),
-                mode="lines",
-                name="20d Avg",
-                line=dict(color="#ff9800", width=2),
-            ))
-            fig2.update_layout(
-                title=f"{selected_symbol} Volume",
-                xaxis_title="Date",
-                yaxis_title="Volume",
-                template="plotly_dark",
-                height=400,
+            fig = go.Figure(
+                go.Bar(
+                    y=sector_stats["Sector"],
+                    x=sector_stats["avg_buy"],
+                    orientation="h",
+                    text=[f"{v:.0f} · {c} tickers" for v, c in zip(sector_stats["avg_buy"], sector_stats["count"])],
+                    textposition="auto",
+                    marker_color=[TIERS[score_tier(v)]["fg"] for v in sector_stats["avg_buy"]],
+                    marker_opacity=0.85,
+                )
             )
-            st.plotly_chart(fig2, use_container_width=True)
+            fig.update_layout(title="Average buy score by sector", xaxis_title="", yaxis_title="")
+            st.plotly_chart(_style_fig(fig, height=max(320, 26 * len(sector_stats) + 80)), use_container_width=True)
+        else:
+            st.info("No sector data yet.")
+    with chart_right:
+        st.markdown('<div class="section-title">Score distribution</div>', unsafe_allow_html=True)
+        if not scored.empty:
+            fig = go.Figure(
+                go.Histogram(
+                    x=scored["Buy Score"],
+                    xbins=dict(start=0, end=100, size=5),
+                    marker_color="#818cf8",
+                    marker_line=dict(color="rgba(10,14,23,0.8)", width=1),
+                )
+            )
+            fig.update_layout(title="Buy score histogram", xaxis_title="Buy score", yaxis_title="Tickers", bargap=0.05)
+            st.plotly_chart(_style_fig(fig, height=380), use_container_width=True)
 
-        # Key metrics cards
-        row = df[df["symbol"] == selected_symbol].iloc[0]
+# ---------------------------------------------------------------------------
+# SCREENER
+# ---------------------------------------------------------------------------
 
-        # Company description
-        desc = row.get('description', '')
-        if desc:
-            with st.expander("Company Description", expanded=False):
-                st.markdown(desc)
+with tab_screener:
+    ctrl_cols = st.columns([1.1, 1.2, 1.1, 1.3, 1.3])
+    with ctrl_cols[0]:
+        view_mode = st.selectbox("Columns", list(VIEW_COLS.keys()), index=0)
+    with ctrl_cols[1]:
+        sort_options = [c for c in VIEW_COLS[view_mode] if c in display_df.columns and c != "Updated"]
+        sort_by = st.selectbox("Sort by", sort_options, index=sort_options.index("Buy Score") if "Buy Score" in sort_options else 0)
+    with ctrl_cols[2]:
+        sort_dir = st.selectbox("Order", ["Descending", "Ascending"], index=0)
+    with ctrl_cols[3]:
+        all_sectors = sorted(display_df["Sector"].dropna().unique().tolist())
+        sector_filter = st.multiselect("Sector", all_sectors, placeholder="All sectors")
+    with ctrl_cols[4]:
+        rating_filter = st.multiselect("Rating", RATING_ORDER, placeholder="All ratings")
 
-        st.markdown("#### Key Metrics")
-        mcol1, mcol2, mcol3, mcol4, mcol5, mcol6 = st.columns(6)
-        with mcol1:
-            st.metric("Price", f"${row.get('price', 'N/A')}")
-        with mcol2:
-            st.metric("Trailing P/E", f"{row.get('pe_trailing', 'N/A')}")
-        with mcol3:
-            st.metric("Fwd PE", f"{row.get('pe_forward', 'N/A')}")
-        with mcol4:
-            st.metric("PEG", f"{row.get('peg_ratio', 'N/A')}")
-        with mcol5:
-            market_cap = row.get('market_cap')
-            st.metric("Market Cap", _fmt_market_cap(market_cap))
-        with mcol6:
-            cagr = row.get('projected_cagr')
-            if cagr is None or (isinstance(cagr, float) and cagr != cagr):
-                st.metric("Analyst Est Growth", "N/A")
-            else:
-                st.metric("Analyst Est Growth", f"{cagr}%")
+    opt_cols = st.columns([1.1, 1.1, 2.8])
+    with opt_cols[0]:
+        view_type = st.radio("Display", ["Table", "Cards"], horizontal=True, label_visibility="collapsed")
+    with opt_cols[1]:
+        only_holdings = st.checkbox("🎯 Holdings only")
+    with opt_cols[2]:
+        mode_options = sorted(display_df["Mode"].dropna().unique().tolist()) if "Mode" in display_df.columns else []
+        mode_filter = st.multiselect("Score mode", mode_options, placeholder="All score modes", label_visibility="collapsed")
 
-        mcol7, mcol8, mcol9, mcol10, mcol11 = st.columns(5)
-        with mcol7:
-            upside = row.get('target_upside')
-            if upside is None or (isinstance(upside, float) and upside != upside):
-                st.metric("Target Upside", "N/A")
-            else:
-                st.metric("Target Upside", f"{upside}%")
-        with mcol8:
-            beta = row.get('beta')
-            if beta is None or (isinstance(beta, float) and beta != beta):
-                st.metric("Beta", "N/A")
-            else:
-                st.metric("Beta", f"{beta}")
-        with mcol9:
-            w52h = row.get('week_52_high')
-            if w52h is None or (isinstance(w52h, float) and w52h != w52h):
-                st.metric("52W High", "N/A")
-            else:
-                st.metric("52W High", f"${w52h}")
-        with mcol10:
-            w52l = row.get('week_52_low')
-            if w52l is None or (isinstance(w52l, float) and w52l != w52l):
-                st.metric("52W Low", "N/A")
-            else:
-                st.metric("52W Low", f"${w52l}")
-        with mcol11:
-            st.metric("RSI(14)", f"{row.get('rsi_14', 'N/A')}")
+    NUMERIC_FILTERS = [
+        "Buy Score", "Coverage %", "Valuation", "Growth", "Profit", "Momentum", "Risk",
+        "PEG", "Trailing P/E", "Fwd P/E", "Est Growth %", "Target Upside %",
+        "RSI(14)", "Beta", "Market Cap",
+    ]
+    numeric_ranges = {}
+    with st.expander("Advanced numeric filters"):
+        chosen = st.multiselect("Filter metrics", [c for c in NUMERIC_FILTERS if c in display_df.columns])
+        for metric in chosen:
+            clean = pd.to_numeric(display_df[metric], errors="coerce").dropna()
+            if clean.empty:
+                continue
+            lo, hi = float(clean.min()), float(clean.max())
+            if lo == hi:
+                st.caption(f"{metric}: all values are {lo:.2f}")
+                continue
+            sel = st.slider(metric, lo, hi, (lo, hi), key=f"flt_{metric}")
+            if sel != (lo, hi):
+                numeric_ranges[metric] = sel
 
-        score_meta_cols = st.columns(2)
-        with score_meta_cols[0]:
-            mode_label = row.get("score_mode") or "N/A"
-            st.metric("Score Mode", mode_label)
-        with score_meta_cols[1]:
-            coverage_val = row.get("data_coverage")
-            if coverage_val is None or (isinstance(coverage_val, float) and coverage_val != coverage_val):
-                st.metric("Data Coverage", "N/A")
-            else:
-                st.metric("Data Coverage", f"{coverage_val:.1f}%")
+    filtered = display_df.copy()
+    if only_holdings:
+        filtered = filtered[filtered["Symbol"].isin(held_symbols)]
+    if sector_filter:
+        filtered = filtered[filtered["Sector"].isin(sector_filter)]
+    if rating_filter and "Rating" in filtered.columns:
+        filtered = filtered[filtered["Rating"].isin(rating_filter)]
+    if mode_filter and "Mode" in filtered.columns:
+        filtered = filtered[filtered["Mode"].isin(mode_filter)]
+    for metric, (lo, hi) in numeric_ranges.items():
+        series = pd.to_numeric(filtered[metric], errors="coerce")
+        filtered = filtered[(series >= lo) & (series <= hi)]
 
-        st.markdown("#### Scores")
-        
-        # Big buy score at the top
-        buy = row.get('buy_score')
-        if buy is not None:
-            bcol = st.columns([1, 2, 1])[1]
-            with bcol:
-                score_color = "#1a5f1a" if buy >= 80 else "#2e8b2e" if buy >= 65 else "#daa520" if buy >= 45 else "#cd853f" if buy >= 30 else "#b22222"
-                st.markdown(f"""
-                <div style="background-color: {score_color}; padding: 20px; border-radius: 15px; text-align: center; color: white; margin-bottom: 20px;">
-                    <p style="margin: 0; font-size: 1em; opacity: 0.9;">Composite Buy Score</p>
-                    <h1 style="margin: 0; font-size: 3em;">{buy}</h1>
-                    <p style="margin: 0; font-size: 0.9em; opacity: 0.9;">out of 100</p>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # 5-Pillar breakdown
-        st.markdown("**5-Pillar Breakdown** (Valuation · Growth · Profitability · Momentum · Risk)")
-        pcols = st.columns(5)
-        pillar_map = [
-            ("Valuation", "score_valuation"),
-            ("Growth", "score_growth"),
-            ("Profitability", "score_profitability"),
-            ("Momentum", "score_momentum"),
-            ("Risk", "score_risk"),
-        ]
-        for pcol, (label, key) in zip(pcols, pillar_map):
-            with pcol:
-                pv = row.get(key)
-                if pv is None or (isinstance(pv, float) and pv != pv):
-                    st.metric(label, "N/A")
-                    st.progress(0)
-                else:
-                    st.metric(label, f"{pv:.0f}/20")
-                    st.progress(pv / 20)
+    if sort_by in filtered.columns:
+        filtered = filtered.sort_values(sort_by, ascending=(sort_dir == "Ascending"), na_position="last")
 
-        # Adjustment Deltas
-        st.markdown("**Reality-Check Adjustments**")
-        adj_cols = st.columns(5)
-        adj_map = [
-            ("PEG Δ", "adj_peg"),
-            ("CAGR Δ", "adj_growth"),
-            ("PE Trj Δ", "adj_pe_traj"),
-            ("Exhaust Δ", "adj_exhaustion"),
-            ("Target Δ", "adj_target"),
-        ]
-        for acol, (label, key) in zip(adj_cols, adj_map):
-            with acol:
-                av = row.get(key, 0) or 0
-                color = "#1a5f1a" if av > 0 else "#b22222" if av < 0 else "#555"
-                st.metric(label, f"{av:+.0f}")
+    active_cols = [c for c in VIEW_COLS[view_mode] if c in filtered.columns]
 
-        adj_cols2 = st.columns(5)
-        adj_map2 = [
-            ("Tech Δ", "adj_technical"),
-            ("Comm Δ", "adj_commentary"),
-            ("Surprise Δ", "adj_surprise"),
-            ("Coverage Δ", "adj_coverage"),
-        ]
-        for acol, (label, key) in zip(adj_cols2, adj_map2):
-            with acol:
-                av = row.get(key, 0) or 0
-                st.metric(label, f"{av:+.0f}")
-
-        st.markdown("---")
-        st.markdown("**Legacy Scores** (for reference)")
-        scol1, scol2, scol3 = st.columns(3)
-        with scol1:
-            st.metric("Buy Score", f"{buy}/100" if buy is not None else "N/A")
-            st.progress(buy / 100 if buy is not None else 0)
-        with scol2:
-            st.metric("Technical Score", f"{row.get('technical_score', 'N/A')}/4")
-            st.progress(row.get('technical_score', 0) / 4 if row.get('technical_score') else 0)
-        with scol3:
-            st.metric("Commentary Score", f"{row.get('commentary_score', 'N/A')}/4")
-            st.progress(row.get('commentary_score', 0) / 4 if row.get('commentary_score') else 0)
-
-# Export
-st.markdown("---")
-if st.button("📥 Export to CSV"):
-    csv = table_df.to_csv(index=False)
-    st.download_button(
-        label="Download CSV",
-        data=csv,
+    info_col, export_col = st.columns([4, 1])
+    info_col.caption(f"Showing {len(filtered)} of {len(display_df)} tickers")
+    export_col.download_button(
+        "📥 Export CSV",
+        data=filtered[active_cols].to_csv(index=False),
         file_name=f"stock_dashboard_{datetime.now().strftime('%Y%m%d')}.csv",
         mime="text/csv",
+        use_container_width=True,
     )
+
+    if filtered.empty:
+        st.info("No tickers match the selected filters.")
+    elif view_type == "Cards":
+        render_cards(filtered, held_symbols)
+    else:
+        render_table(filtered[active_cols], held_symbols)
+
+    # --- Compare ---
+    compare_symbols = st.multiselect("🔍 Compare tickers", display_df["Symbol"].tolist(), placeholder="Pick 2-6 tickers to compare side by side")
+    if compare_symbols:
+        compare_cols = [
+            "Symbol", "Name", "Buy Score", "Rating", "Mode", "Coverage %",
+            "Valuation", "Growth", "Profit", "Momentum", "Risk",
+            "Price", "Market Cap", "PEG", "Est Growth %", "Target Upside %",
+        ]
+        compare_df = display_df[display_df["Symbol"].isin(compare_symbols)]
+        compare_df = compare_df[[c for c in compare_cols if c in compare_df.columns]]
+        render_table(compare_df, held_symbols)
+
+# ---------------------------------------------------------------------------
+# TICKER DETAIL
+# ---------------------------------------------------------------------------
+
+with tab_detail:
+    symbols_sorted = display_df.sort_values("Buy Score", ascending=False, na_position="last")["Symbol"].tolist()
+    sel_col, period_col = st.columns([3, 1])
+    with sel_col:
+        selected_symbol = st.selectbox("Ticker", symbols_sorted, key="chart_symbol")
+    with period_col:
+        period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
+
+    if selected_symbol:
+        row = display_df[display_df["Symbol"] == selected_symbol].iloc[0]
+        buy = row.get("Buy Score")
+        tier = TIERS[score_tier(buy)]
+        rating = row.get("Rating") or "—"
+
+        head_left, head_right = st.columns([3, 1])
+        with head_left:
+            st.markdown(
+                f"""
+                <div style="display:flex;align-items:center;gap:14px;margin:6px 0 2px;">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:700;">{selected_symbol}</div>
+                    <div style="color:#8b95a8;">{row.get('Name') or ''}</div>
+                </div>
+                <div style="margin-bottom:8px;">{badge(rating, RATING_TIER.get(rating, 'neutral'))} {badge(row.get('Mode') or '—')} {badge(row.get('Sector') or 'Unknown')} {badge(f"Coverage {fmt(row.get('Coverage %'), 'Coverage %')}")}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with head_right:
+            st.markdown(
+                f"""
+                <div style="text-align:center;background:{tier['bg']};border:1px solid {tier['border']};border-radius:14px;padding:10px;">
+                    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.12em;color:{tier['fg']};">Buy score</div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:2.2rem;font-weight:700;color:{tier['fg']};">{fmt(buy, 'Buy Score')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        # --- Pillars & adjustments ---
+        pillar_cols = st.columns(5)
+        for col, label in zip(pillar_cols, ("Valuation", "Growth", "Profit", "Momentum", "Risk")):
+            pv = row.get(label)
+            with col:
+                if pv is None or (isinstance(pv, float) and pv != pv):
+                    st.metric(label, "—")
+                else:
+                    st.metric(label, f"{pv:.0f}/20")
+                    st.progress(min(max(pv / 20, 0.0), 1.0))
+
+        adj_items = [
+            ("Value premium", row.get("Value Δ")),
+            ("Analyst conviction", row.get("Analyst Δ")),
+            ("Earnings trajectory", row.get("Trajectory Δ")),
+            ("Trend exhaustion", row.get("Exhaust Δ")),
+        ]
+        adj_html = " ".join(
+            badge(
+                f"{label} {av:+.0f}",
+                "strong_buy" if av > 0 else ("strong_sell" if av < 0 else "neutral"),
+            )
+            for label, av in adj_items
+            if isinstance(av, (int, float)) and not (isinstance(av, float) and av != av)
+        )
+        if adj_html:
+            st.markdown(f'<div style="margin:4px 0 10px;">Conviction adjustments: {adj_html}</div>', unsafe_allow_html=True)
+
+        # --- Key metrics ---
+        metric_rows = [
+            [
+                ("Price", fmt(row.get("Price"), "Price")),
+                ("Market cap", fmt_large_number(row.get("Market Cap"))),
+                ("Trailing P/E", fmt(row.get("Trailing P/E"), "Trailing P/E")),
+                ("Fwd P/E", fmt(row.get("Fwd P/E"), "Fwd P/E")),
+                ("PEG", fmt(row.get("PEG"), "PEG")),
+                ("Beta", fmt(row.get("Beta"), "Beta")),
+            ],
+            [
+                ("Est growth", fmt(row.get("Est Growth %"), "Est Growth %")),
+                ("Target upside", fmt(row.get("Target Upside %"), "Target Upside %")),
+                ("52W high", fmt(row.get("52W High"), "52W High")),
+                ("52W low", fmt(row.get("52W Low"), "52W Low")),
+                ("RSI(14)", fmt(row.get("RSI(14)"), "RSI(14)")),
+                ("Exhaustion", row.get("Exhaustion") or "—"),
+            ],
+        ]
+        for metric_row in metric_rows:
+            cols = st.columns(len(metric_row))
+            for col, (label, value) in zip(cols, metric_row):
+                col.metric(label, value)
+
+        # --- Charts (price history only — cached, no full info fetch) ---
+        hist = load_history(selected_symbol, period)
+        if hist is None:
+            st.warning("Could not load price history right now.")
+        else:
+            chart_left, chart_right = st.columns(2)
+            with chart_left:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close", line=dict(color="#22d3ee", width=2)))
+                fig.add_trace(go.Scatter(x=hist.index, y=hist["Close"].rolling(50).mean(), mode="lines", name="50 MA", line=dict(color="#fbbf24", width=1.4)))
+                fig.add_trace(go.Scatter(x=hist.index, y=hist["Close"].rolling(200).mean(), mode="lines", name="200 MA", line=dict(color="#f472b6", width=1.4)))
+                fig.update_layout(title=f"{selected_symbol} price", yaxis_title="Price")
+                st.plotly_chart(_style_fig(fig, height=400), use_container_width=True)
+            with chart_right:
+                fig2 = go.Figure()
+                fig2.add_trace(go.Bar(x=hist.index, y=hist["Volume"], name="Volume", marker_color="rgba(129, 140, 248, 0.55)"))
+                fig2.add_trace(go.Scatter(x=hist.index, y=hist["Volume"].rolling(20).mean(), mode="lines", name="20d avg", line=dict(color="#fbbf24", width=1.6)))
+                fig2.update_layout(title=f"{selected_symbol} volume", yaxis_title="Volume")
+                st.plotly_chart(_style_fig(fig2, height=400), use_container_width=True)
+
+        desc = row.get("description")
+        if isinstance(desc, str) and desc.strip():
+            with st.expander("Company description"):
+                st.markdown(desc)
+
+        detail_actions = st.columns([1, 5])
+        if detail_actions[0].button("🗑️ Remove ticker", key="remove_detail"):
+            remove_ticker(selected_symbol)
+            invalidate_data()
+            flash(f"Removed {selected_symbol}.")
+            st.rerun()

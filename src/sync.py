@@ -1,12 +1,14 @@
 import logging
-from typing import List
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Dict, List, Optional
+
 from src.database import get_tickers, upsert_metrics, add_ticker
 from src.fetcher import fetch_ticker_data, get_company_name, get_sector
 from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd
 from src.scoring import (
     calculate_technical_score,
     calculate_commentary_score,
-    calculate_buy_score_v2,
+    calculate_buy_score,
     rating_band,
 )
 
@@ -16,7 +18,6 @@ logger = logging.getLogger(__name__)
 def _compute_expected_growth(info: dict) -> float:
     """
     Ensemble estimate of expected growth using 4 signals with outlier rejection.
-    Analogous to how AI models blend multiple weak predictors into a robust estimate.
 
     Signals (processed individually):
       1. PEG-implied growth   = forwardPE / PEG  (market's embedded estimate)
@@ -72,10 +73,8 @@ def _compute_expected_growth(info: dict) -> float:
         # it's likely from a near-zero earnings base (e.g., VICR, MU).
         if rev_growth is not None and earn_growth > 0:
             if earn_growth > 3 * rev_growth and earn_growth > 60:
-                # Dampen to a blend of revenue growth + a reasonable premium
                 earn_growth = min(rev_growth * 1.5 + 25, 90)
             elif earn_growth > 100:
-                # Pure small-base spike with no revenue backing
                 earn_growth = min(earn_growth, 100)
         else:
             earn_growth = max(-30, min(earn_growth, 100))
@@ -87,7 +86,6 @@ def _compute_expected_growth(info: dict) -> float:
     if fwd_pe and trail_pe and trail_pe > 0:
         pe_ratio = fwd_pe / trail_pe
         if pe_ratio < 1:
-            # Forward PE lower than trailing = market expects earnings growth
             pe_trajectory = ((1 / pe_ratio) - 1) * 100
             pe_trajectory = max(-30, min(pe_trajectory, 100))
             signals.append(pe_trajectory)
@@ -96,38 +94,51 @@ def _compute_expected_growth(info: dict) -> float:
     if not signals:
         return None
 
-    # Normalize weights and compute weighted average
     total_w = sum(weights)
     weights = [w / total_w for w in weights]
     blended = sum(s * w for s, w in zip(signals, weights))
 
-    # Final sanity caps
     blended = max(-30, min(blended, 100))
     return round(blended, 1)
 
 
+def add_and_sync(symbol: str) -> bool:
+    """
+    Add a ticker to the watchlist and try to sync it.
+
+    The ticker is persisted BEFORE the network fetch, so a flaky Yahoo
+    response can never lose it — it just shows as unsynced until the
+    next sync succeeds.
+    """
+    symbol = symbol.strip().upper()
+    if not symbol:
+        return False
+    add_ticker(symbol)
+    return sync_ticker(symbol)
+
+
 def sync_ticker(symbol: str) -> bool:
     """Fetch and store all metrics for a single ticker."""
-    data = fetch_ticker_data(symbol)
+    symbol = symbol.strip().upper()
+    try:
+        data = fetch_ticker_data(symbol)
+    except Exception as exc:
+        logger.error(f"Sync failed for {symbol}: {exc}")
+        return False
     if not data:
         return False
 
     info = data["info"]
     history = data["history"]
 
-    # Ensure ticker exists in DB
+    # Ensure ticker exists in DB and refresh name/sector
     add_ticker(symbol, get_company_name(info), get_sector(info, symbol))
 
     # Calculate indicators
     exhaustion = calculate_exhaustion(history)
-
-    # Technical score
     tech_score = calculate_technical_score(history, exhaustion)
-
-    # Commentary score
     comm_score = calculate_commentary_score(info)
 
-    # Additional metrics
     vs_50 = calc_price_vs_ma(history["Close"], 50)
     vs_200 = calc_price_vs_ma(history["Close"], 200)
     _, _, macd_signal = calc_macd(history["Close"])
@@ -142,8 +153,7 @@ def sync_ticker(symbol: str) -> bool:
     if target_mean and current_price and current_price > 0:
         target_upside = round((target_mean - current_price) / current_price * 100, 1)
 
-    # New 5-pillar professional scoring with reality checks
-    buy_score, pillars, adjustments, data_coverage, score_mode = calculate_buy_score_v2(
+    buy_score, pillars, adjustments, data_coverage, score_mode = calculate_buy_score(
         info=info,
         history=history,
         exhaustion_level=exhaustion.get("exhaustion_level", "None"),
@@ -153,8 +163,6 @@ def sync_ticker(symbol: str) -> bool:
         volume_ratio=exhaustion.get("volume_ratio"),
         week_52_change=info.get("52WeekChange"),
         rsi=exhaustion.get("rsi_14"),
-        technical_score=tech_score,
-        commentary_score=comm_score,
         target_upside=target_upside,
     )
     band = rating_band(buy_score)
@@ -193,15 +201,17 @@ def sync_ticker(symbol: str) -> bool:
         "score_profitability": pillars["profitability"],
         "score_momentum": pillars["momentum"],
         "score_risk": pillars["risk"],
-        "adj_technical": adjustments["technical_crosscheck"],
-        "adj_commentary": adjustments["commentary_crosscheck"],
-        "adj_target": adjustments["target_reality"],
-        "adj_surprise": adjustments["earnings_surprise"],
-        "adj_coverage": adjustments["coverage_quality"],
-        "adj_peg": adjustments["peg_premium"],
-        "adj_growth": adjustments["growth_trajectory"],
-        "adj_pe_traj": adjustments["pe_trajectory"],
-        "adj_exhaustion": adjustments["exhaustion_penalty"],
+        # v3 conviction adjustments
+        "adj_peg": adjustments["value_premium"],
+        "adj_target": adjustments["analyst_conviction"],
+        "adj_pe_traj": adjustments["earnings_trajectory"],
+        "adj_exhaustion": adjustments["exhaustion"],
+        # retired v2 adjustments — zeroed so stale values don't linger
+        "adj_technical": 0,
+        "adj_commentary": 0,
+        "adj_surprise": 0,
+        "adj_coverage": 0,
+        "adj_growth": 0,
         "description": info.get("longBusinessSummary", ""),
     }
 
@@ -215,24 +225,46 @@ def sync_ticker(symbol: str) -> bool:
 
     upsert_metrics(symbol, clean_metrics)
 
-    def _fmt_pillar(value):
-        return f"{value:.0f}" if isinstance(value, (int, float)) else "NA"
-
     logger.info(
-        f"Synced {symbol}: Buy={buy_score} ({band}), "
-        f"V={_fmt_pillar(pillars.get('valuation'))} G={_fmt_pillar(pillars.get('growth'))} "
-        f"P={_fmt_pillar(pillars.get('profitability'))} M={_fmt_pillar(pillars.get('momentum'))} "
-        f"R={_fmt_pillar(pillars.get('risk'))} | "
-        f"adj={sum(adjustments.values()):+.0f} mode={score_mode} coverage={data_coverage:.0f}%"
+        f"Synced {symbol}: Buy={buy_score} ({band}), mode={score_mode}, coverage={data_coverage:.0f}%"
     )
     return True
 
 
-def sync_all() -> List[str]:
+def sync_many(
+    symbols: List[str],
+    max_workers: int = 8,
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
+) -> Dict[str, List[str]]:
+    """
+    Sync a list of tickers concurrently (network-bound, so threads give a
+    near-linear speedup over the old sequential loop).
+
+    Returns {"synced": [...], "failed": [...]}.
+    """
+    symbols = [s.strip().upper() for s in symbols if s and s.strip()]
+    results: Dict[str, List[str]] = {"synced": [], "failed": []}
+    if not symbols:
+        return results
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(symbols))) as executor:
+        futures = {executor.submit(sync_ticker, sym): sym for sym in symbols}
+        for done, future in enumerate(as_completed(futures), start=1):
+            sym = futures[future]
+            try:
+                ok = future.result()
+            except Exception as exc:
+                logger.error(f"Sync failed for {sym}: {exc}")
+                ok = False
+            results["synced" if ok else "failed"].append(sym)
+            if progress_cb:
+                progress_cb(done, len(symbols), sym)
+
+    results["synced"].sort()
+    results["failed"].sort()
+    return results
+
+
+def sync_all(progress_cb: Optional[Callable[[int, int, str], None]] = None) -> List[str]:
     """Sync all tracked tickers. Returns list of successfully synced symbols."""
-    tickers = get_tickers()
-    synced = []
-    for symbol in tickers:
-        if sync_ticker(symbol):
-            synced.append(symbol)
-    return synced
+    return sync_many(get_tickers(), progress_cb=progress_cb)["synced"]
