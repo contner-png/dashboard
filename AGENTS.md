@@ -1,5 +1,10 @@
 # Repository Notes
 
+## Deployment & data persistence
+- Hosting is assumed ephemeral (Streamlit Community Cloud): the SQLite file resets to the committed copy on every restart, so in-app syncs/ticker-adds do not survive restarts.
+- `.github/workflows/nightly-sync.yml` runs `scripts/nightly_sync.py` on weekday evenings: merges `data/watchlist.txt` into tickers, syncs everything, WAL-checkpoints, and commits the refreshed `data/stocks.db`. The committed DB is the durable source of truth.
+- To add a ticker permanently, add a line to `data/watchlist.txt` (UI adds are session-scoped on ephemeral hosts).
+
 ## Architecture
 - `app.py` — Streamlit UI only (header, sidebar management, Overview / Screener / Ticker Detail tabs). Reads come from SQLite via `load_metrics()` (`st.cache_data`, 2 min TTL); call `invalidate_data()` after any DB mutation.
 - `src/database.py` — SQLite layer. `METRIC_COLUMNS` is the single source of truth for the metrics schema; `init_db()` auto-adds any missing column, so never hand-write ALTER TABLE migrations. DB path resolves from `STOCKS_DB_PATH` / `STOCKS_DB_DIR` / `RENDER_DISK_PATH`, falling back to `data/stocks.db`. WAL mode is enabled.
