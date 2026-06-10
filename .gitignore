@@ -14,6 +14,6 @@ build/
 venv/
 ENV/
 .DS_Store
-.streamlit/
+.streamlit/secrets.toml
 *.db-wal
 *.db-shm

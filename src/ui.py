@@ -268,6 +268,18 @@ h1, h2, h3, h4 {
 
 .block-container { padding-top: 1.4rem; padding-bottom: 4rem; max-width: 1400px; }
 
+/* Streamlit's built-in top toolbar renders as a white strip on the light
+   base theme — blend it into the dark background instead. */
+header[data-testid="stHeader"] {
+    background: transparent;
+}
+header[data-testid="stHeader"] button,
+header[data-testid="stHeader"] svg {
+    color: var(--muted);
+    fill: var(--muted);
+}
+div[data-testid="stDecoration"] { display: none; }
+
 section[data-testid="stSidebar"] {
     background: #0d1220;
     border-right: 1px solid var(--border);
