@@ -99,6 +99,8 @@ def fmt(val, col):
         return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
     if col in ("Trailing P/E", "Fwd P/E", "PEG", "Beta", "RSI(14)", "Current Ratio", "Rec Mean"):
         return f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
+    if col in ("1W %", "1M %", "YTD %"):
+        return f"{val:+.1f}%" if isinstance(val, (int, float)) else str(val)
     if col in ("Est Growth %", "Target Upside %", "vs 50MA %", "vs 200MA %", "ROC 10d", "Coverage %",
                "DCF Upside %", "Max DD %", "ROE %", "Gross M %", "Op M %", "Net M %",
                "Rev Growth %", "EPS Growth %"):
@@ -205,7 +207,8 @@ def cell_style(val, col) -> str:
             return f"color:{BAD};font-weight:600;"
         if val < 30:
             return f"color:{GOOD};font-weight:600;"
-    if col in ("Est Growth %", "Target Upside %", "vs 50MA %", "vs 200MA %", "ROC 10d") and is_num:
+    if col in ("Est Growth %", "Target Upside %", "vs 50MA %", "vs 200MA %", "ROC 10d",
+               "1W %", "1M %", "YTD %") and is_num:
         if val > 0:
             return f"color:{GOOD};"
         if val < 0:
