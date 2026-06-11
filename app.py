@@ -1,4 +1,9 @@
+import hashlib
+import os
+import tempfile
+
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
@@ -26,6 +31,8 @@ from src.ui import (
     badge,
     score_tier,
     pillar_tier,
+    sort_key,
+    sortable_table_doc,
     TIERS,
     RATING_TIER,
     RATING_ORDER,
@@ -415,13 +422,18 @@ VIEW_COLS = {
 
 
 def render_table(table_df: pd.DataFrame, held_symbols: set):
+    """Color-coded table with click-to-sort column headers (numeric-aware,
+    missing values always sort last). Rendered via a component iframe so the
+    header clicks can run client-side without a Streamlit rerun."""
     cols = table_df.columns.tolist()
-    parts = ['<div class="dash-table-wrap"><table class="dash-table"><thead><tr>']
+    head_parts = ["<tr>"]
     for col in cols:
-        parts.append(f"<th>{col}</th>")
-    parts.append("</tr></thead><tbody>")
+        head_parts.append(f'<th title="Click to sort">{col}<span class="arrow"></span></th>')
+    head_parts.append("</tr>")
+
+    body_parts = []
     for _, row in table_df.iterrows():
-        parts.append("<tr>")
+        body_parts.append("<tr>")
         symbol = row.get("Symbol")
         for col in cols:
             val = row[col]
@@ -429,10 +441,22 @@ def render_table(table_df: pd.DataFrame, held_symbols: set):
             text = time_ago(val) if col == "Updated" else fmt(val, col)
             if col == "Symbol" and symbol in held_symbols:
                 text = f"🎯 {text}"
-            parts.append(f'<td style="{style}">{text}</td>')
-        parts.append("</tr>")
-    parts.append("</tbody></table></div>")
-    st.markdown("".join(parts), unsafe_allow_html=True)
+            key = str(val) if col == "Updated" else sort_key(val, col)
+            key = str(key).replace('"', "&quot;")
+            body_parts.append(f'<td style="{style}" data-v="{key}">{text}</td>')
+        body_parts.append("</tr>")
+
+    inner_height = min(640, 46 + 34 * len(table_df))
+    doc = sortable_table_doc("".join(head_parts), "".join(body_parts), inner_height)
+    if hasattr(st, "iframe"):
+        # st.iframe wants a file, so park the doc in a content-addressed temp file.
+        doc_path = os.path.join(tempfile.gettempdir(), f"dash_table_{hashlib.md5(doc.encode()).hexdigest()}.html")
+        if not os.path.exists(doc_path):
+            with open(doc_path, "w") as fh:
+                fh.write(doc)
+        st.iframe(doc_path, height=inner_height + 18)
+    else:
+        components.html(doc, height=inner_height + 18, scrolling=False)
 
 
 def render_cards(cards_df: pd.DataFrame, held_symbols: set):

@@ -229,6 +229,110 @@ def cell_style(val, col) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Sortable table (rendered in a component iframe so header clicks can run JS)
+# ---------------------------------------------------------------------------
+
+EXHAUSTION_ORDER = {"None": 0, "Building": 1, "High": 2, "Extreme": 3}
+
+
+def sort_key(val, col):
+    """data-v attribute used by the client-side sorter: numeric when possible,
+    rank order for ordinal text columns, plain string otherwise."""
+    if val is None or (isinstance(val, float) and val != val):
+        return ""
+    if isinstance(val, (int, float)):
+        return f"{float(val):.6f}"
+    if col == "Rating":
+        rank = RATING_ORDER.index(val) if val in RATING_ORDER else len(RATING_ORDER)
+        return f"{len(RATING_ORDER) - rank}"  # Strong Buy sorts highest
+    if col == "Exhaustion":
+        return f"{EXHAUSTION_ORDER.get(val, -1)}"
+    if col == "DCF Verdict":
+        order = {"Undervalued": 2, "Fairly Valued": 1, "Overvalued": 0}
+        return f"{order.get(val, -1)}"
+    return str(val)
+
+
+def sortable_table_doc(thead_html: str, tbody_html: str, max_height: int) -> str:
+    """Standalone HTML document for st.components.html: the dash-table styles
+    plus a small numeric-aware sorter bound to the column headers."""
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+html, body {{ margin: 0; padding: 0; background: transparent; font-family: 'Inter', sans-serif; }}
+.dash-table-wrap {{
+    overflow: auto;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    max-height: {max_height}px;
+    background: #121826;
+}}
+.dash-table {{ border-collapse: separate; border-spacing: 0; font-size: 12.8px; width: max-content; min-width: 100%; }}
+.dash-table thead th {{
+    position: sticky; top: 0;
+    background: #1a2235; color: #e6eaf2;
+    font-weight: 600; padding: 10px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    white-space: nowrap; z-index: 10; text-align: left;
+    cursor: pointer; user-select: none;
+}}
+.dash-table thead th:hover {{ color: #a5b4fc; }}
+.dash-table thead th .arrow {{ font-size: 0.7em; color: #a5b4fc; }}
+.dash-table tbody td {{
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    white-space: nowrap; color: #e6eaf2;
+}}
+.dash-table tbody tr:hover td {{ background: rgba(129, 140, 248, 0.07); }}
+.dash-table thead th:first-child, .dash-table tbody td:first-child {{
+    position: sticky; left: 0; min-width: 84px; z-index: 20;
+    background: #121826; border-right: 1px solid rgba(148, 163, 184, 0.14);
+}}
+.dash-table thead th:first-child {{ z-index: 30; background: #1a2235; }}
+::-webkit-scrollbar {{ width: 10px; height: 10px; }}
+::-webkit-scrollbar-thumb {{ background: rgba(148, 163, 184, 0.25); border-radius: 6px; }}
+::-webkit-scrollbar-track {{ background: transparent; }}
+</style></head>
+<body>
+<div class="dash-table-wrap">
+<table class="dash-table" id="t">
+<thead>{thead_html}</thead>
+<tbody>{tbody_html}</tbody>
+</table>
+</div>
+<script>
+function sortTable(idx) {{
+  const table = document.getElementById('t');
+  const tbody = table.tBodies[0];
+  const rows = Array.from(tbody.rows);
+  const ths = table.tHead.rows[0].cells;
+  const th = ths[idx];
+  const dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
+  for (const c of ths) {{ c.dataset.dir = ''; const a = c.querySelector('.arrow'); if (a) a.textContent = ''; }}
+  th.dataset.dir = dir;
+  const arrow = th.querySelector('.arrow');
+  if (arrow) arrow.textContent = dir === 'asc' ? ' \\u25B2' : ' \\u25BC';
+  rows.sort((a, b) => {{
+    const av = a.cells[idx].dataset.v ?? '';
+    const bv = b.cells[idx].dataset.v ?? '';
+    if (av === '' && bv === '') return 0;
+    if (av === '') return 1;   // missing values always last
+    if (bv === '') return -1;
+    const an = parseFloat(av), bn = parseFloat(bv);
+    let r;
+    if (!isNaN(an) && !isNaN(bn)) r = an - bn;
+    else r = String(av).localeCompare(String(bv));
+    return dir === 'asc' ? r : -r;
+  }});
+  rows.forEach(r => tbody.appendChild(r));
+}}
+document.querySelectorAll('#t thead th').forEach((th, i) => th.addEventListener('click', () => sortTable(i)));
+</script>
+</body></html>"""
+
+
+# ---------------------------------------------------------------------------
 # Global CSS
 # ---------------------------------------------------------------------------
 
