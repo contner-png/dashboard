@@ -359,10 +359,21 @@ if "Buy Score" in display_df.columns and "Sector" in display_df.columns:
     # A percentile is meaningless against 1-2 peers — blank it out there.
     display_df.loc[_sector_sizes < 3, "Sector %ile"] = float("nan")
 
-# "Summary" is the decision view: every high-signal metric in one screen —
-# composite score, both upside estimates (DCF + analyst), valuation, growth,
-# quality, and risk — ordered roughly by how much each should drive a decision.
+# "All Metrics" is the default: every market/valuation/fundamental/technical
+# metric, with the scoring internals (pillars, deltas, mode/coverage) left to
+# the Scores view. Buy Score + Rating stay as the headline ranking.
 VIEW_COLS = {
+    "All Metrics": [
+        "Symbol", "Name", "Sector", "Buy Score", "Rating",
+        "Price", "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
+        "Target Upside %", "Trailing P/E", "Fwd P/E", "PEG",
+        "Est Growth %", "Rev Growth %", "EPS Growth %",
+        "ROE %", "Gross M %", "Op M %", "Net M %", "FCF", "D/E", "Current Ratio",
+        "Beta", "Max DD %", "52W High", "52W Low",
+        "RSI(14)", "Exhaustion", "vs 50MA %", "vs 200MA %", "MACD",
+        "BB Position", "ROC 10d", "Vol 20d", "Vol 50d",
+        "Analysts", "Rec Mean", "Earnings", "Updated",
+    ],
     "Summary": [
         "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
         "DCF Upside %", "Target Upside %", "PEG", "Fwd P/E",
@@ -922,13 +933,90 @@ with tab_research:
 
 with tab_detail:
     symbols_sorted = display_df.sort_values("Buy Score", ascending=False, na_position="last")["Symbol"].tolist()
+    _label_rows = display_df.set_index("Symbol")
+
+    def _detail_label(sym: str) -> str:
+        r = _label_rows.loc[sym]
+        score = r.get("Buy Score")
+        score_txt = f"{score:.0f}" if isinstance(score, (int, float)) and score == score else "—"
+        name = str(r.get("Name") or "")[:26]
+        return f"{sym} · {score_txt} · {name}"
+
     sel_col, period_col = st.columns([3, 1])
     with sel_col:
-        selected_symbol = st.selectbox("Ticker", symbols_sorted, key="chart_symbol")
+        selected_symbols = st.multiselect(
+            "Tickers — pick one for a deep-dive, or 2-4 to compare",
+            symbols_sorted,
+            default=symbols_sorted[:1],
+            format_func=_detail_label,
+            max_selections=4,
+            key="detail_symbols",
+        )
     with period_col:
         period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
 
-    if selected_symbol:
+    PALETTE = ["#22d3ee", "#a78bfa", "#fbbf24", "#34d399"]
+
+    if not selected_symbols:
+        st.info("Pick at least one ticker above.")
+    elif len(selected_symbols) > 1:
+        # ------------------------- COMPARISON MODE -------------------------
+        fig = go.Figure()
+        missing = []
+        for i, sym in enumerate(selected_symbols):
+            hist = load_history(sym, period)
+            if hist is None or len(hist) < 2:
+                missing.append(sym)
+                continue
+            rel = (hist["Close"] / hist["Close"].iloc[0] - 1) * 100
+            fig.add_trace(go.Scatter(
+                x=hist.index, y=rel, mode="lines", name=sym,
+                line=dict(color=PALETTE[i % len(PALETTE)], width=2),
+            ))
+        fig.update_layout(title=f"Relative performance — {period}", yaxis_title="% change", hovermode="x unified")
+        st.plotly_chart(_style_fig(fig, height=420), use_container_width=True)
+        if missing:
+            st.caption(f"No price history available for: {', '.join(missing)}")
+
+        st.markdown('<div class="section-title">Side-by-side metrics</div>', unsafe_allow_html=True)
+        COMPARE_METRICS = [
+            "Buy Score", "Rating", "Sector", "Sector %ile",
+            "Price", "Market Cap", "DCF Upside %", "DCF Verdict", "Target Upside %",
+            "PEG", "Fwd P/E", "Trailing P/E", "Est Growth %", "Rev Growth %", "EPS Growth %",
+            "ROE %", "Gross M %", "Net M %", "FCF", "D/E", "Beta",
+            "Max DD %", "RSI(14)", "Exhaustion", "Earnings",
+        ]
+        parts = ['<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Metric</th>']
+        for sym in selected_symbols:
+            parts.append(f"<th>{sym}</th>")
+        parts.append("</tr></thead><tbody>")
+        for metric in COMPARE_METRICS:
+            if metric not in _label_rows.columns:
+                continue
+            parts.append(f"<tr><td>{metric}</td>")
+            for sym in selected_symbols:
+                val = _label_rows.loc[sym, metric] if sym in _label_rows.index else None
+                parts.append(f'<td style="{cell_style(val, metric)}">{fmt(val, metric)}</td>')
+            parts.append("</tr>")
+        parts.append("</tbody></table></div>")
+        st.markdown("".join(parts), unsafe_allow_html=True)
+
+        st.markdown('<div class="section-title">Pillar comparison</div>', unsafe_allow_html=True)
+        pillar_names = ["Valuation", "Growth", "Profit", "Momentum", "Risk"]
+        fig2 = go.Figure()
+        for i, sym in enumerate(selected_symbols):
+            if sym not in _label_rows.index:
+                continue
+            vals = [_label_rows.loc[sym].get(p) for p in pillar_names]
+            fig2.add_trace(go.Bar(
+                name=sym, x=pillar_names, y=vals,
+                marker_color=PALETTE[i % len(PALETTE)], marker_opacity=0.85,
+            ))
+        fig2.update_layout(barmode="group", yaxis_title="Pillar score (0-20)", yaxis_range=[0, 20])
+        st.plotly_chart(_style_fig(fig2, height=340), use_container_width=True)
+    else:
+        # -------------------------- DEEP-DIVE MODE -------------------------
+        selected_symbol = selected_symbols[0]
         row = display_df[display_df["Symbol"] == selected_symbol].iloc[0]
         buy = row.get("Buy Score")
         tier = TIERS[score_tier(buy)]
