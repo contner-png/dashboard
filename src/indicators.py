@@ -88,6 +88,34 @@ def calc_roc(prices: pd.Series, period: int = 10) -> float:
     return float((prices.iloc[-1] / prices.iloc[-(period + 1)] - 1) * 100)
 
 
+def calc_price_changes(history: pd.DataFrame) -> Dict:
+    """Calendar-based price changes: 1 week, 1 month, and year-to-date (%).
+    YTD is measured from the last close of the previous year."""
+    out = {"change_1w": None, "change_1m": None, "change_ytd": None}
+    if history is None or "Close" not in history or len(history) < 2:
+        return out
+    close = history["Close"].dropna()
+    if len(close) < 2:
+        return out
+    last_date = close.index[-1]
+    last_close = float(close.iloc[-1])
+
+    def change_since(cutoff, strict=False):
+        past = close[close.index < cutoff] if strict else close[close.index <= cutoff]
+        if past.empty:
+            return None
+        base = float(past.iloc[-1])
+        if base <= 0:
+            return None
+        return round((last_close / base - 1) * 100, 1)
+
+    out["change_1w"] = change_since(last_date - pd.Timedelta(days=7))
+    out["change_1m"] = change_since(last_date - pd.Timedelta(days=30))
+    year_start = pd.Timestamp(year=last_date.year, month=1, day=1, tz=last_date.tz)
+    out["change_ytd"] = change_since(year_start, strict=True)
+    return out
+
+
 def calculate_exhaustion(history: pd.DataFrame) -> Dict:
     """
     Calculate exhaustion based on volume, RSI, and price action.

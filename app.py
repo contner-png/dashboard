@@ -338,6 +338,9 @@ COLUMN_MAP = {
     "dcf_upside": "DCF Upside %",
     "dcf_verdict": "DCF Verdict",
     "max_drawdown_1y": "Max DD %",
+    "change_1w": "1W %",
+    "change_1m": "1M %",
+    "change_ytd": "YTD %",
     "roe": "ROE %",
     "gross_margin": "Gross M %",
     "operating_margin": "Op M %",
@@ -372,7 +375,8 @@ if "Buy Score" in display_df.columns and "Sector" in display_df.columns:
 VIEW_COLS = {
     "All Metrics": [
         "Symbol", "Name", "Sector", "Buy Score", "Rating",
-        "Price", "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
+        "Price", "1W %", "1M %", "YTD %",
+        "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
         "Target Upside %", "Trailing P/E", "Fwd P/E", "PEG",
         "Est Growth %", "Rev Growth %", "EPS Growth %",
         "ROE %", "Gross M %", "Op M %", "Net M %", "FCF", "D/E", "Current Ratio",
@@ -385,7 +389,7 @@ VIEW_COLS = {
         "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
         "DCF Upside %", "Target Upside %", "PEG", "Fwd P/E",
         "Est Growth %", "ROE %", "Max DD %",
-        "Price", "Coverage %", "Earnings", "Updated",
+        "Price", "1W %", "1M %", "YTD %", "Coverage %", "Earnings", "Updated",
     ],
     "Scores": [
         "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile",
@@ -401,7 +405,8 @@ VIEW_COLS = {
         "Analysts", "Rec Mean", "Earnings",
     ],
     "Technicals": [
-        "Symbol", "Name", "Sector", "Price", "RSI(14)", "Exhaustion", "Max DD %",
+        "Symbol", "Name", "Sector", "Price", "1W %", "1M %", "YTD %",
+        "RSI(14)", "Exhaustion", "Max DD %",
         "vs 50MA %", "vs 200MA %", "MACD", "BB Position", "ROC 10d",
         "Vol 20d", "Vol 50d", "Updated",
     ],
@@ -409,7 +414,8 @@ VIEW_COLS = {
         "Symbol", "Name", "Sector", "Buy Score", "Rating", "Sector %ile", "Mode", "Coverage %",
         "Valuation", "Growth", "Profit", "Momentum", "Risk",
         "Value Δ", "Analyst Δ", "Trajectory Δ", "Exhaust Δ", "Intrinsic Δ",
-        "Price", "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
+        "Price", "1W %", "1M %", "YTD %",
+        "Market Cap", "DCF Value", "DCF Upside %", "DCF Verdict",
         "Trailing P/E", "Fwd P/E", "PEG", "Beta",
         "Est Growth %", "Target Upside %", "ROE %", "Gross M %", "Op M %", "Net M %",
         "Rev Growth %", "EPS Growth %", "FCF", "D/E", "Current Ratio",
@@ -635,6 +641,7 @@ with tab_screener:
         "Buy Score", "Sector %ile", "Coverage %", "DCF Upside %", "Valuation", "Growth", "Profit", "Momentum", "Risk",
         "PEG", "Trailing P/E", "Fwd P/E", "Est Growth %", "Target Upside %",
         "ROE %", "Rev Growth %", "Max DD %", "D/E",
+        "1W %", "1M %", "YTD %",
         "RSI(14)", "Beta", "Market Cap",
     ]
     numeric_ranges = {}
@@ -1005,7 +1012,8 @@ with tab_detail:
         st.markdown('<div class="section-title">Side-by-side metrics</div>', unsafe_allow_html=True)
         COMPARE_METRICS = [
             "Buy Score", "Rating", "Sector", "Sector %ile",
-            "Price", "Market Cap", "DCF Upside %", "DCF Verdict", "Target Upside %",
+            "Price", "1W %", "1M %", "YTD %",
+            "Market Cap", "DCF Upside %", "DCF Verdict", "Target Upside %",
             "PEG", "Fwd P/E", "Trailing P/E", "Est Growth %", "Rev Growth %", "EPS Growth %",
             "ROE %", "Gross M %", "Net M %", "FCF", "D/E", "Beta",
             "Max DD %", "RSI(14)", "Exhaustion", "Earnings",

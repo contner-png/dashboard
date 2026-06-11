@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Optional
 
 from src.database import get_tickers, upsert_metrics, add_ticker, store_prices
 from src.fetcher import fetch_ticker_data, get_company_name, get_sector
-from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd
+from src.indicators import calculate_exhaustion, calc_price_vs_ma, calc_macd, calc_price_changes
 from src.research import dcf_valuation, max_drawdown
 from src.scoring import (
     calculate_technical_score,
@@ -166,6 +166,7 @@ def sync_ticker(symbol: str) -> bool:
         debt=info.get("totalDebt"),
     )
     mdd = max_drawdown(history["Close"])
+    price_changes = calc_price_changes(history)
 
     next_earnings = None
     earnings_ts = info.get("earningsTimestampStart") or info.get("earningsTimestamp")
@@ -259,6 +260,9 @@ def sync_ticker(symbol: str) -> bool:
         "num_analysts": info.get("numberOfAnalystOpinions"),
         "next_earnings": next_earnings,
         "max_drawdown_1y": mdd,
+        "change_1w": price_changes["change_1w"],
+        "change_1m": price_changes["change_1m"],
+        "change_ytd": price_changes["change_ytd"],
         "dcf_value": dcf["value"] if dcf else None,
         "dcf_upside": dcf["upside"] if dcf else None,
         "dcf_bull": dcf["bull"] if dcf else None,
