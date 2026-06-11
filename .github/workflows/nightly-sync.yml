@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -35,11 +35,29 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/stocks.db
-          if git diff --cached --quiet; then
+          if git diff --quiet -- data/stocks.db; then
             echo "No data changes to commit."
-          else
-            git commit -m "Nightly data sync"
-            git pull --rebase origin "${GITHUB_REF_NAME}"
-            git push
+            exit 0
           fi
+          # stocks.db is binary, so a rebase can never merge it. Our freshly
+          # synced copy supersedes whatever landed on origin mid-run: stash it,
+          # reset to origin, reapply, and push (retry in case of another race).
+          cp data/stocks.db /tmp/fresh-stocks.db
+          for attempt in 1 2 3; do
+            git fetch origin "${GITHUB_REF_NAME}"
+            git reset --hard "origin/${GITHUB_REF_NAME}"
+            cp /tmp/fresh-stocks.db data/stocks.db
+            git add data/stocks.db
+            if git diff --cached --quiet; then
+              echo "Origin already has identical data."
+              exit 0
+            fi
+            git commit -m "Nightly data sync"
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              exit 0
+            fi
+            echo "Push race (attempt ${attempt}) — retrying."
+            sleep 5
+          done
+          echo "Failed to push after 3 attempts." >&2
+          exit 1
