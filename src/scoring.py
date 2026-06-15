@@ -59,6 +59,29 @@ def _normalize_pillar(earned: float, possible: float):
     return round(_clip((earned / possible) * 20, 0, 20), 1)
 
 
+# Each pillar can assess up to ~20 points of sub-signals. When far fewer than
+# that had data, the normalized score rests on thin evidence — one lone signal
+# could otherwise mint a perfect 20. Shrink such scores toward neutral (10) in
+# proportion to how much of the pillar was actually assessable, so scores
+# reflect confidence and stay comparable across peers. Full credibility kicks
+# in once at least EVIDENCE_FLOOR of the pillar had data.
+PILLAR_NOMINAL_MAX = 20.0
+EVIDENCE_FLOOR = 0.5
+NEUTRAL_PILLAR = 10.0
+
+
+def _normalize_pillar_floored(earned: float, possible: float):
+    """Coverage-aware pillar score: normalize to 0-20, then shrink toward
+    neutral when the pillar rested on thin within-pillar data."""
+    if possible <= 0:
+        return None
+    normalized = _clip((earned / possible) * 20, 0, 20)
+    coverage_frac = min(possible / PILLAR_NOMINAL_MAX, 1.0)
+    credibility = min(1.0, coverage_frac / EVIDENCE_FLOOR)
+    shrunk = NEUTRAL_PILLAR + (normalized - NEUTRAL_PILLAR) * credibility
+    return round(_clip(shrunk, 0, 20), 1)
+
+
 def _score_growth_rate(growth_pct: float):
     if growth_pct is None or (isinstance(growth_pct, float) and growth_pct != growth_pct):
         return None
@@ -213,8 +236,14 @@ def score_growth(info: Dict) -> Tuple[float, float]:
             earned += 1
 
     # 3. Analyst conviction (estimate revision proxy, 0-5 pts)
+    # Yahoo's recommendationMean runs 1.0 (Strong Buy) -> 5.0 (Sell); a value
+    # of 0 is its "no rating" sentinel, NOT a perfect score. And a mean from a
+    # single analyst is too noisy to trust — require >= 2 before scoring it, so
+    # thin coverage can't mint phantom conviction points.
     rec_key = (info.get("recommendationKey") or "").lower()
-    if _has(rec_mean):
+    num_analysts = info.get("numberOfAnalystOpinions")
+    enough_analysts = _has(num_analysts) and num_analysts >= 2
+    if _has(rec_mean) and rec_mean > 0 and enough_analysts:
         possible += 5
         if rec_mean <= 1.5:
             earned += 5  # Strong Buy consensus
@@ -222,7 +251,7 @@ def score_growth(info: Dict) -> Tuple[float, float]:
             earned += 3  # Buy
         elif rec_mean <= 2.5:
             earned += 1  # Hold
-    elif rec_key:
+    elif rec_key and enough_analysts:
         possible += 5
         if rec_key in ("buy", "strong_buy"):
             earned += 3
@@ -643,7 +672,7 @@ def calculate_buy_score(
         ),
     }
 
-    pillars = {name: _normalize_pillar(earned, possible) for name, (earned, possible) in results.items()}
+    pillars = {name: _normalize_pillar_floored(earned, possible) for name, (earned, possible) in results.items()}
 
     # Coverage: weighted share of the model that actually had data (each
     # pillar's possible points max out at 20).

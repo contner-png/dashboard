@@ -17,6 +17,8 @@ from src.database import (
     get_stale_tickers,
     get_holdings,
     set_holdings,
+    write_holdings_file,
+    seed_holdings_from_file,
     get_prices,
 )
 from src.sync import add_and_sync, sync_many
@@ -41,6 +43,7 @@ from src.ui import (
 st.set_page_config(page_title="Stock Dashboard", page_icon="📈", layout="wide")
 inject_css(st)
 init_db()
+seed_holdings_from_file()  # restore committed holdings on a fresh (ephemeral) DB
 
 STALE_HOURS = 24
 
@@ -226,9 +229,15 @@ with st.sidebar.expander("🎯 My holdings"):
     )
     if st.button("Save holdings", use_container_width=True, disabled=set(picked) == set(current_holdings)):
         set_holdings(picked)
+        write_holdings_file(picked)  # durable where the filesystem persists
         invalidate_data()
         flash(f"Saved {len(picked)} holdings.")
         st.rerun()
+    st.caption(
+        "On hosted (ephemeral) deployments, holdings saved here reset on restart. "
+        "To keep them permanently, commit them to `data/holdings.txt` on GitHub:"
+    )
+    st.code("\n".join(picked) or "# (none selected)", language=None)
 
 with st.sidebar.expander("🗑️ Remove tickers"):
     to_remove = st.multiselect("Select tickers", all_symbols, key="remove_picker")
