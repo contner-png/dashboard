@@ -1,0 +1,6 @@
+# Permanent holdings — one ticker per line ('#' starts a comment).
+# These are the positions you actually own. On ephemeral hosting (e.g.
+# Streamlit Community Cloud) the database resets to the committed copy on every
+# restart, so holdings tagged only in the app UI are lost — editing this file
+# on GitHub is the durable way to record what you hold. Symbols must already be
+# tracked (in the watchlist) to count.

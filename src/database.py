@@ -357,6 +357,55 @@ def get_holdings() -> List[str]:
     return [r[0] for r in rows]
 
 
+# Durable holdings live in a committed file (like the watchlist), because the
+# database resets to the committed copy on ephemeral hosting.
+HOLDINGS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "holdings.txt")
+
+
+def load_holdings_file() -> List[str]:
+    """Symbols listed in data/holdings.txt ('#' comments allowed)."""
+    if not os.path.exists(HOLDINGS_FILE):
+        return []
+    out = []
+    with open(HOLDINGS_FILE) as fh:
+        for line in fh:
+            sym = line.split("#", 1)[0].strip().upper()
+            if sym:
+                out.append(sym)
+    return out
+
+
+def write_holdings_file(symbols: List[str]):
+    """Persist the held set to data/holdings.txt (best effort — the write only
+    survives restarts where the filesystem is durable, e.g. local or a mounted
+    disk; on ephemeral hosts edit the committed file on GitHub instead)."""
+    header = (
+        "# Permanent holdings — one ticker per line ('#' starts a comment).\n"
+        "# Edit this file on GitHub to record holdings durably on ephemeral hosting.\n"
+    )
+    body = "\n".join(sorted({s.upper() for s in symbols}))
+    try:
+        with open(HOLDINGS_FILE, "w") as fh:
+            fh.write(header + body + ("\n" if body else ""))
+        return True
+    except OSError:
+        return False
+
+
+def seed_holdings_from_file(replace: bool = False):
+    """Apply data/holdings.txt to the holdings table. With replace=False (app
+    startup) only seeds when the table is empty, so it never clobbers holdings
+    set in the current session or carried in a committed DB. With replace=True
+    (nightly sync) the file is authoritative. A file with no symbols is a no-op
+    either way, so existing holdings are never wiped by an empty file."""
+    wanted = [s for s in load_holdings_file() if s in set(get_tickers())]
+    if not wanted:
+        return
+    if not replace and get_holdings():
+        return
+    set_holdings(wanted)
+
+
 def is_held(symbol: str) -> bool:
     conn = get_conn()
     cursor = conn.cursor()

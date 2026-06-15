@@ -20,7 +20,7 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database import DB_PATH, init_db, add_ticker, get_tickers  # noqa: E402
+from src.database import DB_PATH, init_db, add_ticker, get_tickers, seed_holdings_from_file  # noqa: E402
 from src.sync import sync_many  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -46,6 +46,9 @@ def main() -> int:
 
     for sym in load_watchlist():
         add_ticker(sym)
+
+    # holdings.txt is authoritative in the committed DB
+    seed_holdings_from_file(replace=True)
 
     tickers = get_tickers()
     logger.info(f"Syncing {len(tickers)} tickers…")
