@@ -1,4 +1,172 @@
-# Permanent watchlist — one ticker per line ('#' starts a comment).
-# The nightly sync adds any symbol listed here to the dashboard, so editing
-# this file on GitHub is the durable way to add tickers (additions made in
-# the app UI are lost when ephemeral hosting restarts).
+# Tracked universe — the authoritative ticker list (one per line).
+# Generated from SECTOR_GROUPS in src/fetcher.py by scripts/apply_universe.py.
+# The nightly sync treats this as the universe: tickers not listed here are removed.
+
+# Semiconductors — chips, memory & IP (15)
+NVDA
+ARM
+MRVL
+NXPI
+STM
+AMBQ
+MXL
+RMBS
+SMTC
+ALAB
+KXIAY
+ADEA
+LSCC
+INTC
+MTSI
+
+# Power semiconductors & conversion (5)
+POWI
+MPWR
+IPWR
+AOSL
+NVTS
+
+# Semiconductor equipment, test & materials (17)
+TER
+ATEYY
+AEHR
+ACLS
+CAMT
+VECO
+MKSI
+PLAB
+ATOM
+AXTI
+IMOS
+ASX
+IBIDY
+KEYS
+TRT
+AMAT
+AIXA.DE
+
+# Software, AI & computing (16)
+CRWD
+PANW
+SAIL
+CDNS
+SNPS
+PATH
+TWLO
+INOD
+REKR
+TASK
+NBIS
+IONQ
+SVCO
+BSY
+BBAI
+VEEV
+
+# Communications, networking & optical (13)
+CSCO
+ERIC
+ATEN
+VIAV
+LITE
+AAOI
+POET
+LWLG
+LPTH
+CLFD
+HLIT
+AMPG
+CIEN
+
+# IT hardware & electronic components (10)
+IBM
+HPQ
+HPE
+SMCI
+SANM
+CRSR
+P
+PENG
+TEL
+KOPN
+
+# Aerospace, defense, space & industrials (12)
+PH
+EMR
+TDY
+ELMT
+BWA
+RKLB
+SPIR
+BKSY
+RDW
+PL
+SATS
+MOD
+
+# Physical AI — autonomy, robotics & humanoid components (6)
+MOG-A
+YASKY
+MBLY
+OUST
+HSAI
+VPG
+
+# Energy, power & electrification (12)
+ENPH
+SEDG
+FLNC
+NRG
+ETN
+POWL
+FPS
+CGEH
+HYLN
+PUMP
+VST
+2GB.DE
+
+# Chemicals & specialty materials (3)
+ROG
+SOLS
+MP
+
+# Healthcare & biotech (10)
+LLY
+RXRX
+ABCL
+IBRX
+TEM
+TWST
+MDT
+SDGR
+BFLY
+AKTS
+
+# Financials & fintech (4)
+JPM
+HOOD
+IBKR
+DLO
+
+# Crypto / digital assets (5)
+GLXY
+CRCL
+CYPH
+IREN
+ONDO
+
+# Consumer, gaming & leisure (1)
+MGM
+
+# ETFs / funds (7)
+XLE
+XLP
+GLDM
+TAN
+NLR
+EWZ
+SLV
+
+# Real estate / holding companies (1)
+HHH
