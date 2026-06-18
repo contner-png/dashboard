@@ -177,6 +177,7 @@ def remove_ticker(symbol: str):
     cursor.execute("DELETE FROM tickers WHERE symbol = ?", (symbol.upper(),))
     cursor.execute("DELETE FROM metrics WHERE symbol = ?", (symbol.upper(),))
     cursor.execute("DELETE FROM holdings WHERE symbol = ?", (symbol.upper(),))
+    cursor.execute("DELETE FROM prices WHERE symbol = ?", (symbol.upper(),))
     conn.commit()
     conn.close()
 
@@ -227,7 +228,7 @@ def get_ticker_info(symbol: str) -> Optional[Dict]:
     conn.close()
     if not row:
         return None
-    return dict(zip(cols, row))
+    return _row_to_dict(cols, row)
 
 
 def upsert_metrics(symbol: str, metrics: Dict):
@@ -315,7 +316,19 @@ def get_all_metrics() -> List[Dict]:
     rows = cursor.fetchall()
     cols = [desc[0] for desc in cursor.description]
     conn.close()
-    return [dict(zip(cols, row)) for row in rows]
+    return [_row_to_dict(cols, row) for row in rows]
+
+
+def _row_to_dict(cols: List[str], row) -> Dict:
+    """Zip a row to a dict, keeping the FIRST occurrence of any duplicate
+    column name. The metrics join exposes `symbol` twice (t.symbol and
+    metrics.symbol); for not-yet-synced tickers metrics.symbol is NULL and
+    would otherwise clobber the real symbol from the tickers table."""
+    out: Dict = {}
+    for col, val in zip(cols, row):
+        if col not in out:
+            out[col] = val
+    return out
 
 
 def init_holdings():

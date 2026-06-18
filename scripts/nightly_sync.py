@@ -20,7 +20,7 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database import DB_PATH, init_db, add_ticker, get_tickers, seed_holdings_from_file  # noqa: E402
+from src.database import DB_PATH, init_db, add_ticker, remove_ticker, get_tickers, seed_holdings_from_file  # noqa: E402
 from src.sync import sync_many  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -44,8 +44,18 @@ def load_watchlist() -> list:
 def main() -> int:
     init_db()
 
-    for sym in load_watchlist():
+    # The watchlist is the authoritative universe: add everything in it and,
+    # when it's non-empty, remove anything tracked that isn't (a custom sector
+    # comes from src/fetcher.py SECTOR_MAP at sync time). An empty file is a
+    # no-op so it can never wipe the universe.
+    watchlist = load_watchlist()
+    for sym in watchlist:
         add_ticker(sym)
+    if watchlist:
+        wl = {s.upper() for s in watchlist}
+        for sym in get_tickers():
+            if sym not in wl:
+                remove_ticker(sym)
 
     # holdings.txt is authoritative in the committed DB
     seed_holdings_from_file(replace=True)
