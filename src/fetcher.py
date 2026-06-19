@@ -166,40 +166,43 @@ SECTOR_GROUPS = {
     "Semiconductors — chips, memory & IP": [
         "NVDA", "ARM", "MRVL", "NXPI", "STM", "AMBQ", "MXL", "RMBS",
         "SMTC", "ALAB", "KXIAY", "ADEA", "LSCC", "INTC", "MTSI",
+        "MU", "QCOM", "AMBA", "CRDO", "SIVEF",
     ],
     "Power semiconductors & conversion": [
-        "POWI", "MPWR", "IPWR", "AOSL", "NVTS",
+        "POWI", "MPWR", "IPWR", "AOSL", "NVTS", "VICR",
     ],
     "Semiconductor equipment, test & materials": [
         "TER", "ATEYY", "AEHR", "ACLS", "CAMT", "VECO", "MKSI", "PLAB",
         "ATOM", "AXTI", "IMOS", "ASX", "IBIDY", "KEYS", "TRT", "AMAT",
-        "AIXA.DE",
+        "AIXA.DE", "FORM", "ONTO", "AMKR", "FN", "ENTG", "AIXXF",
     ],
     "Software, AI & computing": [
         "CRWD", "PANW", "SAIL", "CDNS", "SNPS", "PATH", "TWLO", "INOD",
         "REKR", "TASK", "NBIS", "IONQ", "SVCO", "BSY", "BBAI", "VEEV",
+        "MSFT", "GOOGL",
     ],
     "Communications, networking & optical": [
         "CSCO", "ERIC", "ATEN", "VIAV", "LITE", "AAOI", "POET", "LWLG",
         "LPTH", "CLFD", "HLIT", "AMPG", "CIEN",
+        "COHR", "GLW", "NOK", "APH", "FSLY",
     ],
     "IT hardware & electronic components": [
         "IBM", "HPQ", "HPE", "SMCI", "SANM", "CRSR", "P", "PENG",
-        "TEL", "KOPN",
+        "TEL", "KOPN", "AAPL", "DELL",
     ],
     "Aerospace, defense, space & industrials": [
         "PH", "EMR", "TDY", "ELMT", "BWA", "RKLB", "SPIR", "BKSY",
         "RDW", "PL", "SATS", "MOD",
     ],
     "Physical AI — autonomy, robotics & humanoid components": [
-        "MOG-A", "YASKY", "MBLY", "OUST", "HSAI", "VPG",
+        "MOG-A", "YASKY", "MBLY", "OUST", "HSAI", "VPG", "TSLA",
     ],
     "Energy, power & electrification": [
         "ENPH", "SEDG", "FLNC", "NRG", "ETN", "POWL", "FPS", "CGEH",
-        "HYLN", "PUMP", "VST", "2GB.DE",
+        "HYLN", "PUMP", "VST", "2GB.DE", "VRT",
     ],
     "Chemicals & specialty materials": [
-        "ROG", "SOLS", "MP",
+        "ROG", "SOLS", "MP", "AJINF", "CC", "ESI",
     ],
     "Healthcare & biotech": [
         "LLY", "RXRX", "ABCL", "IBRX", "TEM", "TWST", "MDT", "SDGR",
@@ -216,6 +219,7 @@ SECTOR_GROUPS = {
     ],
     "ETFs / funds": [
         "XLE", "XLP", "GLDM", "TAN", "NLR", "EWZ", "SLV",
+        "COPX", "GRID", "IHE", "IVV", "IWM", "KOID", "XBI",
     ],
     "Real estate / holding companies": [
         "HHH",

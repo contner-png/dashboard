@@ -2,7 +2,7 @@
 # Generated from SECTOR_GROUPS in src/fetcher.py by scripts/apply_universe.py.
 # The nightly sync treats this as the universe: tickers not listed here are removed.
 
-# Semiconductors — chips, memory & IP (15)
+# Semiconductors — chips, memory & IP (20)
 NVDA
 ARM
 MRVL
@@ -18,15 +18,21 @@ ADEA
 LSCC
 INTC
 MTSI
+MU
+QCOM
+AMBA
+CRDO
+SIVEF
 
-# Power semiconductors & conversion (5)
+# Power semiconductors & conversion (6)
 POWI
 MPWR
 IPWR
 AOSL
 NVTS
+VICR
 
-# Semiconductor equipment, test & materials (17)
+# Semiconductor equipment, test & materials (23)
 TER
 ATEYY
 AEHR
@@ -44,8 +50,14 @@ KEYS
 TRT
 AMAT
 AIXA.DE
+FORM
+ONTO
+AMKR
+FN
+ENTG
+AIXXF
 
-# Software, AI & computing (16)
+# Software, AI & computing (18)
 CRWD
 PANW
 SAIL
@@ -62,8 +74,10 @@ SVCO
 BSY
 BBAI
 VEEV
+MSFT
+GOOGL
 
-# Communications, networking & optical (13)
+# Communications, networking & optical (18)
 CSCO
 ERIC
 ATEN
@@ -77,8 +91,13 @@ CLFD
 HLIT
 AMPG
 CIEN
+COHR
+GLW
+NOK
+APH
+FSLY
 
-# IT hardware & electronic components (10)
+# IT hardware & electronic components (12)
 IBM
 HPQ
 HPE
@@ -89,6 +108,8 @@ P
 PENG
 TEL
 KOPN
+AAPL
+DELL
 
 # Aerospace, defense, space & industrials (12)
 PH
@@ -104,15 +125,16 @@ PL
 SATS
 MOD
 
-# Physical AI — autonomy, robotics & humanoid components (6)
+# Physical AI — autonomy, robotics & humanoid components (7)
 MOG-A
 YASKY
 MBLY
 OUST
 HSAI
 VPG
+TSLA
 
-# Energy, power & electrification (12)
+# Energy, power & electrification (13)
 ENPH
 SEDG
 FLNC
@@ -125,11 +147,15 @@ HYLN
 PUMP
 VST
 2GB.DE
+VRT
 
-# Chemicals & specialty materials (3)
+# Chemicals & specialty materials (6)
 ROG
 SOLS
 MP
+AJINF
+CC
+ESI
 
 # Healthcare & biotech (10)
 LLY
@@ -159,7 +185,7 @@ ONDO
 # Consumer, gaming & leisure (1)
 MGM
 
-# ETFs / funds (7)
+# ETFs / funds (14)
 XLE
 XLP
 GLDM
@@ -167,6 +193,13 @@ TAN
 NLR
 EWZ
 SLV
+COPX
+GRID
+IHE
+IVV
+IWM
+KOID
+XBI
 
 # Real estate / holding companies (1)
 HHH
