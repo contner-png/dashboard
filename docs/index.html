@@ -138,6 +138,14 @@ h2{
 
 /* ---------- Hero ---------- */
 .hero{padding:172px 0 84px;position:relative;overflow:hidden}
+.hero::before{
+  content:"";position:absolute;inset:0;z-index:0;
+  background-image:radial-gradient(rgba(148,163,184,.14) 1px,transparent 1px);
+  background-size:28px 28px;
+  -webkit-mask-image:radial-gradient(1000px 640px at 72% 12%,#000 0%,transparent 72%);
+  mask-image:radial-gradient(1000px 640px at 72% 12%,#000 0%,transparent 72%);
+}
+#net{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 @media(max-width:640px){.hero{padding:128px 0 60px}}
 .pill{
   display:inline-flex;align-items:center;gap:9px;
@@ -210,6 +218,12 @@ h2{
 }
 .cap:hover{border-color:var(--line-strong);transform:translateY(-4px);box-shadow:0 18px 40px rgba(2,6,17,.5)}
 .cap:hover::before{opacity:1}
+.cap::after,.work::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(460px circle at var(--gx,50%) var(--gy,50%),rgba(129,140,248,.16),transparent 62%);
+  opacity:0;transition:opacity .25s;
+}
+.cap:hover::after,.work:hover::after{opacity:1}
 .cap .icon{
   width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin-bottom:18px;
   background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.25);color:var(--accent);
@@ -241,6 +255,7 @@ h2{
 .work{
   background:var(--card-glass);border:1px solid var(--line);border-radius:var(--radius);
   padding:28px;transition:border-color .2s,transform .2s,box-shadow .2s;display:flex;flex-direction:column;gap:10px;
+  position:relative;overflow:hidden;
 }
 .work:hover{border-color:var(--line-strong);transform:translateY(-4px);box-shadow:0 18px 40px rgba(2,6,17,.5)}
 .work .kind{
@@ -271,6 +286,43 @@ h2{
   border-radius:999px;padding:8px 16px;
 }
 .process li:not(:last-child)::after{content:"→";opacity:.55}
+/* ---------- Before / after comparator ---------- */
+.ba{
+  position:relative;margin-top:40px;border-radius:14px;overflow:hidden;
+  border:1px solid rgba(143,211,182,.28);box-shadow:0 22px 60px rgba(0,0,0,.55);
+  user-select:none;-webkit-user-select:none;touch-action:pan-y;--pos:50%;
+}
+.ba > img{width:100%}
+.ba .ba-top{position:absolute;inset:0;clip-path:inset(0 calc(100% - var(--pos)) 0 0)}
+.ba .ba-top img{position:absolute;inset:0;width:100%;height:100%}
+.ba .ba-divider{
+  position:absolute;top:0;bottom:0;left:var(--pos);width:2px;margin-left:-1px;
+  background:#EDEBDD;box-shadow:0 0 16px rgba(0,0,0,.65);pointer-events:none;
+}
+.ba .ba-knob{
+  position:absolute;top:50%;left:var(--pos);transform:translate(-50%,-50%);
+  width:46px;height:46px;border-radius:50%;
+  background:#0E1B15;border:2px solid #EDEBDD;color:#EDEBDD;
+  display:grid;place-items:center;pointer-events:none;
+  box-shadow:0 6px 20px rgba(0,0,0,.55);
+}
+.ba .ba-knob svg{width:20px;height:20px}
+.ba .ba-label{
+  position:absolute;top:14px;font-family:var(--font-mono);font-size:.66rem;
+  letter-spacing:.12em;text-transform:uppercase;padding:5px 12px;border-radius:999px;
+  background:rgba(6,12,9,.74);border:1px solid rgba(237,235,221,.25);color:#EDEBDD;
+  pointer-events:none;
+}
+.ba .ba-label.left{left:14px}
+.ba .ba-label.right{right:14px}
+.ba input[type=range]{
+  position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:ew-resize;
+  -webkit-appearance:none;appearance:none;
+}
+.ba-hint{
+  margin-top:14px;font-family:var(--font-mono);font-size:.76rem;color:var(--pine);
+  letter-spacing:.04em;
+}
 .plates{margin-top:38px;display:grid;grid-template-columns:1fr 1fr;gap:22px}
 @media(max-width:820px){.plates{grid-template-columns:1fr}}
 .plate{background:transparent;border:0;padding:0;cursor:zoom-in;text-align:left;width:100%}
@@ -397,6 +449,7 @@ footer{
   <div class="hero">
     <div class="glow hero-glow-1"></div>
     <div class="glow hero-glow-2"></div>
+    <canvas id="net" aria-hidden="true"></canvas>
     <div class="wrap" style="position:relative;z-index:1">
       <span class="pill"><span class="live"></span>Open to AI product, marketing &amp; strategy roles — remote or travel</span>
       <h1>AI strategy that <span class="grad-text">ships</span> — from use case to production.</h1>
@@ -420,9 +473,9 @@ footer{
   <section style="padding-top:0" aria-label="Highlights">
     <div class="wrap">
       <div class="stats-grid reveal">
-        <div class="stat"><div class="num">9+ yrs</div><div class="lbl">Enterprise consulting &amp; healthcare leadership</div></div>
-        <div class="stat"><div class="num">$2M+</div><div class="lbl">Annual healthcare savings delivered for partner corporations</div></div>
-        <div class="stat"><div class="num">50%</div><div class="lbl">Revenue growth in one year leading clinic operations</div></div>
+        <div class="stat"><div class="num" data-count="9" data-suffix="+ yrs">9+ yrs</div><div class="lbl">Enterprise consulting &amp; healthcare leadership</div></div>
+        <div class="stat"><div class="num" data-count="2" data-prefix="$" data-suffix="M+">$2M+</div><div class="lbl">Annual healthcare savings delivered for partner corporations</div></div>
+        <div class="stat"><div class="num" data-count="50" data-suffix="%">50%</div><div class="lbl">Revenue growth in one year leading clinic operations</div></div>
         <div class="stat"><div class="num">C-suite</div><div class="lbl">Buy-in secured with CHROs, Presidents &amp; VPs</div></div>
       </div>
     </div>
@@ -533,6 +586,20 @@ footer{
         <li>Course routing</li>
         <li>Identity &amp; rulebook</li>
       </ul>
+      <div class="ba reveal" id="ba">
+        <img src="assets/covert-hills-p1.webp" alt="Final full-color Covert Hills course map">
+        <div class="ba-top" aria-hidden="true">
+          <img src="assets/covert-hills-plan.webp" alt="">
+        </div>
+        <div class="ba-divider" aria-hidden="true"></div>
+        <div class="ba-knob" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8 4 12l4 4M16 8l4 4-4 4"/></svg>
+        </div>
+        <span class="ba-label left" aria-hidden="true">Routing plan</span>
+        <span class="ba-label right" aria-hidden="true">Final design</span>
+        <input type="range" min="0" max="100" value="50" step="0.5" aria-label="Comparison slider: reveal the routing plan or the final course design">
+      </div>
+      <p class="ba-hint reveal">↔ Drag the handle — engineering routing pass on the left, finished plate on the right.</p>
       <div class="plates">
         <figure class="reveal">
           <button class="plate" data-full="assets/covert-hills-p1.webp" aria-label="View course map full size">
@@ -679,6 +746,150 @@ const io = new IntersectionObserver(entries => {
   entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
 }, { threshold: 0.1 });
 document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- Agent-network canvas in the hero ----
+(() => {
+  const canvas = document.getElementById('net');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const COLORS = ['#38BDF8', '#818CF8', '#C084FC'];
+  const LINK = 140;
+  let W, H, nodes = [], pulses = [], raf = null;
+  const mouse = { x: -1e4, y: -1e4 };
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.round(Math.min(85, Math.max(30, (W * H) / 24000)));
+    nodes = Array.from({ length: n }, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - .5) * .35, vy: (Math.random() - .5) * .35,
+      r: 1.2 + Math.random() * 1.6,
+      c: COLORS[(Math.random() * COLORS.length) | 0]
+    }));
+    pulses = [];
+  }
+
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+    for (const n of nodes) {
+      n.x += n.vx; n.y += n.vy;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+      const dx = n.x - mouse.x, dy = n.y - mouse.y, d2 = dx * dx + dy * dy;
+      if (d2 < 16900 && d2 > 1) { // gentle push away from cursor within 130px
+        const d = Math.sqrt(d2), f = (130 - d) / 130 * .5;
+        n.x += dx / d * f; n.y += dy / d * f;
+      }
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
+        if (d < LINK) {
+          ctx.strokeStyle = `rgba(129,140,248,${(1 - d / LINK) * .34})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+    if (pulses.length < 5 && Math.random() < .05) {
+      const i = (Math.random() * nodes.length) | 0;
+      let best = null, bd = LINK;
+      for (let j = 0; j < nodes.length; j++) {
+        if (j === i) continue;
+        const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+        if (d < bd) { bd = d; best = j; }
+      }
+      if (best !== null) pulses.push({ a: nodes[i], b: nodes[best], t: 0 });
+    }
+    for (let k = pulses.length - 1; k >= 0; k--) {
+      const p = pulses[k];
+      p.t += .022;
+      if (p.t >= 1) { pulses.splice(k, 1); continue; }
+      const x = p.a.x + (p.b.x - p.a.x) * p.t, y = p.a.y + (p.b.y - p.a.y) * p.t;
+      ctx.save();
+      ctx.shadowColor = '#38BDF8'; ctx.shadowBlur = 10;
+      ctx.fillStyle = '#7DD3FC';
+      ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    for (const n of nodes) {
+      ctx.fillStyle = n.c;
+      ctx.globalAlpha = .8;
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    if (!reduceMotion) raf = requestAnimationFrame(frame);
+  }
+
+  resize();
+  addEventListener('resize', () => { resize(); if (reduceMotion) frame(); });
+  canvas.parentElement.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
+  });
+  canvas.parentElement.addEventListener('pointerleave', () => { mouse.x = mouse.y = -1e4; });
+  document.addEventListener('visibilitychange', () => {
+    if (reduceMotion) return;
+    if (document.hidden) { cancelAnimationFrame(raf); raf = null; }
+    else if (!raf) raf = requestAnimationFrame(frame);
+  });
+  frame(); // reduced motion gets a single static render
+})();
+
+// ---- Before/after comparator ----
+(() => {
+  const ba = document.getElementById('ba');
+  if (!ba) return;
+  const range = ba.querySelector('input[type=range]');
+  const set = v => ba.style.setProperty('--pos', v + '%');
+  range.addEventListener('input', () => set(range.value));
+  set(range.value);
+})();
+
+// ---- Count-up stats ----
+(() => {
+  const els = document.querySelectorAll('[data-count]');
+  if (!els.length) return;
+  const fmt = el => (t, v) => { el.textContent = (el.dataset.prefix || '') + v + (el.dataset.suffix || ''); };
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      const el = entry.target, target = +el.dataset.count, write = fmt(el);
+      if (reduceMotion) { write(1, target); return; }
+      const t0 = performance.now(), dur = 1300;
+      (function tick(now) {
+        const p = Math.min(1, (now - t0) / dur);
+        const eased = 1 - Math.pow(1 - p, 3);
+        write(p, Math.round(target * eased));
+        if (p < 1) requestAnimationFrame(tick);
+      })(t0);
+    });
+  }, { threshold: 0.6 });
+  els.forEach(el => obs.observe(el));
+})();
+
+// ---- 3D tilt + glare on cards ----
+(() => {
+  if (reduceMotion || !matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  document.querySelectorAll('.cap, .work').forEach(card => {
+    card.addEventListener('pointermove', e => {
+      const r = card.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+      card.style.setProperty('--gx', (px * 100) + '%');
+      card.style.setProperty('--gy', (py * 100) + '%');
+      card.style.transform =
+        `perspective(900px) rotateX(${(0.5 - py) * 6}deg) rotateY(${(px - 0.5) * 8}deg) translateY(-4px)`;
+    });
+    card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+  });
+})();
 </script>
 </body>
 </html>
