@@ -148,12 +148,58 @@ h2{
 #net{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 @media(max-width:640px){.hero{padding:128px 0 60px}}
 .pill{
-  display:inline-flex;align-items:center;gap:9px;
-  border:1px solid var(--line-strong);border-radius:999px;
-  padding:7px 16px;font-size:.83rem;font-weight:500;color:var(--muted);
-  background:rgba(255,255,255,.03);margin-bottom:26px;
+  display:inline-flex;align-items:center;gap:10px;
+  border:1px solid rgba(52,211,153,.28);border-radius:999px;
+  padding:6px 14px;margin-bottom:26px;
+  font-family:var(--font-mono);font-size:.7rem;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;color:#6EE7B7;
+  background:rgba(52,211,153,.05);
 }
-.pill .live{width:8px;height:8px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.18);flex:0 0 auto}
+.pill .live{width:7px;height:7px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.15);flex:0 0 auto}
+.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:56px;align-items:center}
+@media(max-width:980px){.hero-grid{grid-template-columns:1fr;gap:44px}}
+
+/* ---------- Career snapshot card ---------- */
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+.id-card{
+  background:linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
+  border:1px solid var(--line-strong);border-radius:20px;
+  padding:26px 26px 20px;backdrop-filter:blur(10px);
+  box-shadow:0 30px 70px rgba(2,6,17,.55);
+  animation:float 8s ease-in-out infinite;
+  max-width:420px;
+}
+@media(max-width:980px){.id-card{max-width:520px}}
+.id-top{display:flex;align-items:center;gap:14px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.id-avatar{
+  width:52px;height:52px;border-radius:16px;flex:0 0 auto;
+  background:var(--grad);color:#0B1020;display:grid;place-items:center;
+  font-family:var(--font-display);font-weight:700;font-size:1.15rem;
+}
+.id-top strong{font-family:var(--font-display);font-size:1.02rem;display:block}
+.id-top .sub{font-size:.8rem;color:var(--muted)}
+.id-rows{list-style:none;margin:0}
+.id-rows li{
+  display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+  padding:11px 0;border-bottom:1px solid var(--line);
+}
+.id-rows .k{font-size:.86rem;font-weight:600}
+.id-rows .v{font-family:var(--font-mono);font-size:.7rem;color:var(--muted);text-align:right;white-space:nowrap}
+.id-foot{
+  display:flex;align-items:center;gap:9px;padding-top:14px;
+  font-family:var(--font-mono);font-size:.7rem;letter-spacing:.08em;
+  text-transform:uppercase;color:#6EE7B7;
+}
+.id-foot .live{width:7px;height:7px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.15)}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+.id-foot .cursor{animation:blink 1.1s steps(1) infinite;color:var(--accent)}
+
+/* ---------- Scroll progress ---------- */
+#progress{
+  position:fixed;top:0;left:0;right:0;height:2.5px;z-index:200;
+  background:var(--grad);transform:scaleX(0);transform-origin:0 50%;
+  pointer-events:none;
+}
 .hero h1{
   font-family:var(--font-display);
   font-size:clamp(2.5rem,6.4vw,4.2rem);font-weight:700;
@@ -556,6 +602,7 @@ footer{
 </head>
 <body>
 
+<div id="progress" aria-hidden="true"></div>
 <header>
   <div class="wrap nav">
     <a class="brand" href="#top"><span class="dot">AC</span>alexcontner.com</a>
@@ -569,7 +616,7 @@ footer{
         <li><a href="#covert-hills">Featured</a></li>
         <li><a href="#experience">Experience</a></li>
         <li><a href="assets/Alex-Contner-Resume.pdf" download>Resume</a></li>
-        <li><a class="nav-cta" href="#contact">Get in touch</a></li>
+        <li><a class="nav-cta" href="mailto:Contner@gmail.com">Get in touch</a></li>
       </ul>
     </nav>
   </div>
@@ -582,22 +629,40 @@ footer{
     <div class="glow hero-glow-1"></div>
     <div class="glow hero-glow-2"></div>
     <canvas id="net" aria-hidden="true"></canvas>
-    <div class="wrap" style="position:relative;z-index:1">
-      <span class="pill"><span class="live"></span>Open to AI product, marketing &amp; strategy roles — remote or travel</span>
-      <h1>AI strategy that <span class="grad-text">ships</span> — from use case to production.</h1>
-      <p class="sub">I'm Dr. Alex Contner — AI Solutions Strategist &amp; Technical Product Manager with 9+ years of enterprise consulting and healthcare leadership. Now fully focused on AI: designing and deploying multi-agent pipelines, generative AI solutions, and intelligent automation — and taking them to market.</p>
-      <p class="who"><strong>Dr. Alex Contner, PT, DPT</strong> · Cincinnati Metro (Fort Thomas, KY)</p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="#contact">Get in touch</a>
-        <a class="btn btn-ghost" href="assets/Alex-Contner-Resume.pdf" download>Download resume</a>
-        <a class="btn btn-ghost" href="https://linkedin.com/in/dr-alex-contner" rel="me">LinkedIn</a>
+    <div class="wrap hero-grid" style="position:relative;z-index:1">
+      <div>
+        <span class="pill"><span class="live"></span>Open to work — AI product · marketing · strategy</span>
+        <h1>AI strategy that <span class="grad-text">ships</span> — from use case to production.</h1>
+        <p class="sub">I'm Dr. Alex Contner — AI Solutions Strategist &amp; Technical Product Manager with 9+ years of enterprise consulting and healthcare leadership. Now fully focused on AI: designing and deploying multi-agent pipelines, generative AI solutions, and intelligent automation — and taking them to market.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="mailto:Contner@gmail.com">Get in touch</a>
+          <a class="btn btn-ghost" href="assets/Alex-Contner-Resume.pdf" download>Download resume</a>
+          <a class="btn btn-ghost" href="https://linkedin.com/in/dr-alex-contner" rel="me">LinkedIn</a>
+        </div>
+        <div class="hero-tags">
+          <span>Agentic Workflows</span>
+          <span>GTM Strategy</span>
+          <span>ISV &amp; Partner Ecosystems</span>
+          <span>Executive Engagement</span>
+        </div>
       </div>
-      <div class="hero-tags">
-        <span>Agentic Workflows</span>
-        <span>GTM Strategy</span>
-        <span>ISV &amp; Partner Ecosystems</span>
-        <span>Executive Engagement</span>
-      </div>
+      <aside class="id-card reveal" aria-label="Career snapshot">
+        <div class="id-top">
+          <span class="id-avatar" aria-hidden="true">AC</span>
+          <div>
+            <strong>Dr. Alex Contner, PT, DPT</strong>
+            <span class="sub">Cincinnati Metro (Fort Thomas, KY) · Remote &amp; travel</span>
+          </div>
+        </div>
+        <ul class="id-rows">
+          <li><span class="k">Doctor of Physical Therapy</span><span class="v">Univ. of Cincinnati</span></li>
+          <li><span class="k">Healthcare Consultant</span><span class="v">TriHealth · 6 yrs</span></li>
+          <li><span class="k">Clinic Director</span><span class="v">Wellness Docs</span></li>
+          <li><span class="k">AI Practitioner</span><span class="v">Agentic &amp; MCP</span></li>
+          <li><span class="k">Tech Advisor</span><span class="v">Web3 &amp; VC space</span></li>
+        </ul>
+        <div class="id-foot"><span class="live"></span>Building with AI daily<span class="cursor">▌</span></div>
+      </aside>
     </div>
   </div>
 
@@ -624,7 +689,7 @@ footer{
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/><circle cx="19" cy="18" r="2.4"/><path d="M12 7.4v4.1M10.9 12.9 6.3 16M13.1 12.9l4.6 3.1"/></svg></div>
           <h3>AI &amp; Agentic Systems</h3>
           <p>Designing and deploying multi-agent pipelines and generative AI solutions across leading LLM platforms — grounded in daily hands-on building, not secondhand hype.</p>
-          <div class="chips"><span>OpenAI</span><span>Anthropic Claude</span><span>Google Gemini</span><span>RAG</span><span>MCP</span><span>Prompt Engineering</span></div>
+          <div class="chips"><span>OpenAI</span><span>Anthropic Claude</span><span>Gemini Suite</span><span>OpenRouter</span><span>OpenHands</span><span>RAG</span><span>MCP</span></div>
         </div>
         <div class="cap reveal">
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><path d="M17.25 13.5v7.5M13.5 17.25H21"/></svg></div>
@@ -636,7 +701,7 @@ footer{
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></div>
           <h3>GTM &amp; Product Marketing</h3>
           <p>Go-to-market strategy, positioning, whitepapers, and AI-assisted campaigns for technical products — from Web3 startups raising seed rounds to enterprise wellness programs.</p>
-          <div class="chips"><span>GTM Strategy</span><span>Whitepapers</span><span>SEO &amp; Analytics</span><span>A/B Testing</span></div>
+          <div class="chips"><span>GTM Strategy</span><span>Whitepapers</span><span>SEO &amp; Analytics</span><span>A/B Testing</span><span>Google Stitch</span><span>Claude Design Tools</span></div>
         </div>
         <div class="cap reveal">
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
@@ -649,7 +714,7 @@ footer{
       <div class="tool-rows reveal">
         <div class="tool-row">
           <div class="cat">AI platforms</div>
-          <div class="chips"><span>OpenAI (GPT-4o, o1)</span><span>Anthropic Claude</span><span>Google Gemini</span><span>Perplexity</span><span>Open-Source LLMs</span></div>
+          <div class="chips"><span>OpenAI (GPT-4o, o1)</span><span>Anthropic Claude</span><span>Google Gemini Suite</span><span>Google Stitch</span><span>OpenRouter</span><span>OpenHands</span><span>Perplexity</span><span>Open-Source LLMs</span></div>
         </div>
         <div class="tool-row">
           <div class="cat">Agentic &amp; automation</div>
@@ -1007,9 +1072,14 @@ footer{
 </main>
 
 <footer>
-  <div class="wrap" style="display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between">
-    <span>© 2026 Dr. Alex Contner, PT, DPT</span>
-    <span>alexcontner.com</span>
+  <div class="wrap" style="display:flex;flex-wrap:wrap;gap:14px 28px;justify-content:space-between;align-items:center">
+    <span>© 2026 Dr. Alex Contner, PT, DPT · AI Solutions Strategist</span>
+    <span style="display:flex;flex-wrap:wrap;gap:8px 20px">
+      <a href="#work" style="color:inherit;text-decoration:none">Case studies</a>
+      <a href="#covert-hills" style="color:inherit;text-decoration:none">Featured</a>
+      <a href="mailto:Contner@gmail.com" style="color:inherit;text-decoration:none">Contner@gmail.com</a>
+      <a href="https://linkedin.com/in/dr-alex-contner" rel="me" style="color:inherit;text-decoration:none">LinkedIn</a>
+    </span>
   </div>
 </footer>
 
@@ -1051,6 +1121,22 @@ const io = new IntersectionObserver(entries => {
 document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- Scroll progress bar ----
+(() => {
+  const bar = document.getElementById('progress');
+  let ticking = false;
+  const update = () => {
+    const h = document.documentElement;
+    const max = h.scrollHeight - h.clientHeight;
+    bar.style.transform = `scaleX(${max > 0 ? h.scrollTop / max : 0})`;
+    ticking = false;
+  };
+  addEventListener('scroll', () => {
+    if (!ticking) { ticking = true; requestAnimationFrame(update); }
+  }, { passive: true });
+  update();
+})();
 
 // ---- Agent-network canvas in the hero ----
 (() => {
@@ -1281,61 +1367,50 @@ document.querySelectorAll('[data-optional]').forEach(box => {
       ctx.fillStyle = sg; ctx.fillRect(0, sy - 30, W, 60);
     },
 
-    // 02b — quant engine: five-pillar radar + score gauge + drifting sparklines
+    // 02 — live scoring terminal: ticker heatmap with re-score flashes + tape
     quant(ctx, W, H, t) {
-      grid(ctx, W, H, 'rgba(74,222,128,.05)');
-      // radar pentagon, five pillars
-      const cx = W * .3, cy = H * .52, R = Math.min(H * .36, 62);
-      for (const f of [1, .66, .33]) {
+      grid(ctx, W, H, 'rgba(74,222,128,.045)');
+      const DATA = [['MU',90],['NVDA',86],['ATEYY',84],['IHE',84],['XBI',84],['ABCL',80],['IVV',79],['PATH',78],['CRDO',78],['DLO',76],['TWLO',74],['CIEN',74],['GOOGL',74],['ASX',73],['IMOS',73],['VRT',73],['BWA',72],['DELL',71],['KEYS',70],['MKSI',70],['STM',70],['AMAT',69]];
+      const tw = 86, th = 36, gap = 10, x0 = 24, y0 = 52;
+      const cols = Math.max(3, Math.floor((W - x0 * 2 + gap) / (tw + gap)));
+      const rows = H > 170 ? 2 : 1;
+      const tiles = DATA.slice(0, cols * rows);
+      const flash = Math.floor(t * .9) % tiles.length;
+      const ff = 1 - (t * .9 % 1); // flash fade
+      tiles.forEach((d, i) => {
+        const c = i % cols, r = (i / cols) | 0;
+        const x = x0 + c * (tw + gap), y = y0 + r * (th + gap);
+        const s = d[1];
+        const pulse = .6 + .4 * Math.sin(t * 1.2 + i * 1.7);
+        const g = s >= 80 ? [74,222,128] : s >= 76 ? [52,211,153] : [163,230,53];
         ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-          const a = -Math.PI / 2 + i * TAU / 5;
-          const x = cx + Math.cos(a) * R * f, y = cy + Math.sin(a) * R * f;
-          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        ctx.roundRect ? ctx.roundRect(x, y, tw, th, 7) : ctx.rect(x, y, tw, th);
+        ctx.fillStyle = `rgba(${g[0]},${g[1]},${g[2]},${(.08 + .15 * ((s - 68) / 24)) * pulse})`;
+        ctx.fill();
+        ctx.strokeStyle = i === flash
+          ? `rgba(190,255,210,${.85 * ff})`
+          : `rgba(${g[0]},${g[1]},${g[2]},.3)`;
+        ctx.lineWidth = i === flash ? 1.6 : 1;
+        ctx.stroke();
+        ctx.font = '10px "JetBrains Mono",monospace';
+        ctx.fillStyle = 'rgba(226,240,232,.8)';
+        ctx.fillText(d[0], x + 9, y + 15);
+        ctx.font = '600 12px "JetBrains Mono",monospace';
+        ctx.fillStyle = `rgba(${g[0]},${g[1]},${g[2]},.95)`;
+        ctx.fillText(s, x + 9, y + 29);
+        if (i === flash) {
+          ctx.font = '9px "JetBrains Mono",monospace';
+          ctx.fillStyle = `rgba(190,255,210,${.9 * ff})`;
+          ctx.fillText('● scored', x + tw - 52, y + 15);
         }
-        ctx.closePath(); ctx.strokeStyle = 'rgba(74,222,128,.18)'; ctx.lineWidth = 1; ctx.stroke();
-      }
-      ctx.beginPath();
-      const vals = [];
-      for (let i = 0; i < 5; i++) {
-        const v = .55 + .38 * (0.5 + 0.5 * Math.sin(t * .8 + i * 2.1));
-        vals.push(v);
-        const a = -Math.PI / 2 + i * TAU / 5;
-        const x = cx + Math.cos(a) * R * v, y = cy + Math.sin(a) * R * v;
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(74,222,128,.14)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(134,239,172,.85)'; ctx.lineWidth = 1.6; ctx.stroke();
-      vals.forEach((v, i) => {
-        const a = -Math.PI / 2 + i * TAU / 5;
-        ctx.fillStyle = '#86EFAC';
-        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v, 2.4, 0, TAU); ctx.fill();
       });
-      // score gauge
-      const gx = W * .62, gy = H * .55, GR = Math.min(H * .3, 52);
-      ctx.beginPath(); ctx.arc(gx, gy, GR, Math.PI * .75, Math.PI * 2.25);
-      ctx.strokeStyle = 'rgba(148,163,184,.18)'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.stroke();
-      const p = .78 + .16 * (0.5 + 0.5 * Math.sin(t * .5));
-      const end = Math.PI * .75 + Math.PI * 1.5 * p;
-      ctx.beginPath(); ctx.arc(gx, gy, GR, Math.PI * .75, end);
-      ctx.strokeStyle = '#4ADE80'; ctx.shadowColor = 'rgba(74,222,128,.8)'; ctx.shadowBlur = 8; ctx.stroke();
-      ctx.shadowBlur = 0; ctx.lineWidth = 1; ctx.lineCap = 'butt';
-      ctx.fillStyle = '#86EFAC';
-      ctx.beginPath(); ctx.arc(gx + Math.cos(end) * GR, gy + Math.sin(end) * GR, 4, 0, TAU); ctx.fill();
-      // drifting sparklines on the right
-      const sx0 = W * .78;
-      if (sx0 < W - 60) {
-        for (let r = 0; r < 3; r++) {
-          const yb = H * (.3 + r * .22);
-          ctx.beginPath();
-          for (let x = sx0; x < W - 24; x += 5) {
-            const y = yb - Math.sin(x * .06 + t * (1 + r * .3)) * 7 - Math.sin(x * .021 - t * .6) * 5;
-            x === sx0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-          }
-          ctx.strokeStyle = `rgba(74,222,128,${.5 - r * .13})`; ctx.lineWidth = 1.2; ctx.stroke();
-        }
-      }
+      // scrolling ticker tape along the bottom
+      ctx.font = '11px "JetBrains Mono",monospace';
+      const tape = DATA.map(d => `${d[0]} ${d[1]} ▲`).join('   ·   ') + '   ·   ';
+      const tapeW = ctx.measureText(tape).width;
+      const off = -((t * 42) % tapeW);
+      ctx.fillStyle = 'rgba(134,239,172,.55)';
+      for (let x = off; x < W; x += tapeW) ctx.fillText(tape, x, H - 12);
     },
 
     // 04 — rotating hex chain with traveling pulses + orbiting nodes
