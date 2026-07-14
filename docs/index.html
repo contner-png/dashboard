@@ -376,6 +376,41 @@ h2{
 }
 .cs .chips{margin-top:18px}
 
+.cs.quant{--cs:#4ADE80}
+.caps-list{
+  margin-top:22px;display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;list-style:none;
+}
+@media(max-width:760px){.caps-list{grid-template-columns:1fr}}
+.caps-list li{
+  font-size:.88rem;color:var(--muted);padding-left:20px;position:relative;
+}
+.caps-list li::before{content:"▸";position:absolute;left:0;color:var(--cs)}
+.caps-list li b{color:var(--text);font-weight:600}
+
+/* Screenshot frames & scrolling site tour */
+.shot-grid{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.shot-grid{grid-template-columns:1fr}}
+.shot-grid .wide{grid-column:1/-1}
+@media(max-width:820px){.shot-grid .wide{grid-column:auto}}
+.bframe.shot img{width:100%;display:block}
+.tour-view{height:440px;overflow:hidden;position:relative}
+@media(max-width:640px){.tour-view{height:340px}}
+.tour-view img{
+  width:100%;display:block;
+  animation:tour 42s linear infinite alternate;
+}
+.tour-view:hover img{animation-play-state:paused}
+@keyframes tour{
+  from{transform:translateY(0)}
+  to{transform:translateY(calc(-100% + 440px))}
+}
+.tour-hint{
+  position:absolute;right:12px;bottom:12px;z-index:2;
+  font-family:var(--font-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+  color:#CBD5E1;background:rgba(7,11,20,.7);border:1px solid var(--line-strong);
+  border-radius:999px;padding:5px 12px;pointer-events:none;
+}
+
 /* Browser-framed comparator */
 .bframe{margin-top:24px;border:1px solid var(--line-strong);border-radius:14px;overflow:hidden;background:#0B101D}
 .bframe-title{
@@ -681,11 +716,62 @@ footer{
           </div>
         </article>
 
+        <article class="cs quant reveal">
+          <div class="cs-head">
+            <canvas class="cs-canvas" data-scene="quant" aria-hidden="true"></canvas>
+            <span class="cs-tag">Quantitative Engineering</span>
+            <span class="cs-num" aria-hidden="true">02</span>
+          </div>
+          <div class="cs-body">
+            <h3>Stock Intelligence Dashboard — Buy Score Engine</h3>
+            <p class="cs-desc">Designed and built a full-stack quantitative equity platform — Python, Streamlit, and SQLite — that scores a 170-ticker universe with a coverage-aware five-pillar model, generates deterministic DCF research packs, and keeps itself fresh through a nightly automated data pipeline. Built entirely on free market data.</p>
+            <div class="cs-grid">
+              <div class="cs-panel before"><span class="plabel">Before</span><p>Stock research scattered across broker screens, news feeds, and spreadsheets — no consistent framework to compare opportunities across sectors, and no way to know when the data behind a decision had gone stale.</p></div>
+              <div class="cs-panel after"><span class="plabel">After</span><p>One dashboard scoring every ticker on Valuation, Growth, Profitability, Momentum, and Risk — with intrinsic-value modeling, entry and position-sizing plans, a screener with export, and a data pipeline that refreshes the whole universe every night without being touched.</p></div>
+              <div class="cs-metrics">
+                <div class="cs-metric"><span>Tickers scored</span><span class="m-val" data-count="170">170</span></div>
+                <div class="cs-metric"><span>Metrics per ticker</span><span class="m-val" data-count="68">68</span></div>
+                <div class="cs-metric"><span>Scoring pillars</span><span class="m-val" data-count="5">5</span></div>
+                <div class="cs-metric"><span>Market-data cost</span><span class="m-val" data-count="0" data-prefix="$">$0</span></div>
+              </div>
+            </div>
+            <ul class="caps-list">
+              <li><b>Buy Score v3</b> — coverage-aware scoring across five weighted pillars, with evidence floors so thin data can never mint a perfect score</li>
+              <li><b>Five conviction adjustments</b> — value premium, analyst conviction, earnings trajectory, trend exhaustion, and DCF intrinsic value, capped at ±12</li>
+              <li><b>Deterministic 2-stage DCF</b> research pack with bull/bear targets and 3–4 year CAGR scenario bands — fully mechanical, no LLM in the loop</li>
+              <li><b>Execution analytics</b> — entry zones, stop plans, position sizing, max drawdown, and within-sector percentile ranking</li>
+              <li><b>Nightly CI/CD data pipeline</b> — GitHub Actions syncs the universe, checkpoints the SQLite WAL, and commits the refreshed database</li>
+              <li><b>Self-migrating schema</b> — the metrics table evolves from a single source of truth, no hand-written migrations</li>
+              <li><b>Price cache layer</b> — charts and correlation checks served from SQLite, with network fallback and stale-cache resilience</li>
+              <li><b>Screener &amp; holdings</b> — advanced numeric filters, CSV export, and file-backed holdings that survive ephemeral hosting</li>
+            </ul>
+            <div class="chips"><span>Python</span><span>Streamlit</span><span>SQLite (WAL)</span><span>Plotly</span><span>GitHub Actions</span><span>yfinance</span></div>
+            <span class="bframe-title">Live views — real data, real scores</span>
+            <div class="shot-grid">
+              <div class="bframe shot wide">
+                <div class="ba-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="ba-url">dashboard-skov.onrender.com — overview</span></div>
+                <img src="assets/cs-stock-overview.webp" alt="Stock dashboard overview: 170 tickers tracked, average buy score, top buy picks with scores, sector breakdown and score distribution histogram" loading="lazy">
+              </div>
+              <div class="bframe shot">
+                <div class="ba-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="ba-url">ticker deep-dive — five-pillar score</span></div>
+                <img src="assets/cs-stock-ticker.webp" alt="Ticker detail view showing Buy Score 90 for Micron with five pillar scores, conviction adjustments and price charts" loading="lazy">
+              </div>
+              <div class="bframe shot">
+                <div class="ba-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="ba-url">research pack — 2-stage DCF</span></div>
+                <img src="assets/cs-stock-research.webp" alt="Research pack view with intrinsic value DCF, bull and bear targets, CAGR scenarios and quality metrics" loading="lazy">
+              </div>
+            </div>
+            <div class="cta-row" style="margin-top:22px">
+              <a class="btn btn-ghost" href="https://dashboard-skov.onrender.com/" target="_blank" rel="noopener">Open the live dashboard ↗</a>
+            </div>
+          </div>
+        </article>
+
         <article class="cs health reveal">
           <div class="cs-head">
             <canvas class="cs-canvas" data-scene="health" aria-hidden="true"></canvas>
             <span class="cs-tag">Healthcare AI Automation</span>
-            <span class="cs-num" aria-hidden="true">02</span>
+            <span class="cs-num" aria-hidden="true">03</span>
           </div>
           <div class="cs-body">
             <h3>Clinical Intake-to-Evaluation Workflow</h3>
@@ -707,7 +793,7 @@ footer{
           <div class="cs-head">
             <canvas class="cs-canvas" data-scene="web" aria-hidden="true"></canvas>
             <span class="cs-tag">Web Development &amp; Brand</span>
-            <span class="cs-num" aria-hidden="true">03</span>
+            <span class="cs-num" aria-hidden="true">04</span>
           </div>
           <div class="cs-body">
             <h3>Cincinnati Chiropractic &amp; Longevity — Full Site Build</h3>
@@ -722,6 +808,14 @@ footer{
               </div>
             </div>
             <div class="chips"><span>React</span><span>Tailwind CSS</span><span>Framer Motion</span><span>SEO Architecture</span></div>
+            <span class="bframe-title">Site tour — Advanced Longevity Protocol page</span>
+            <div class="bframe shot">
+              <div class="ba-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="ba-url">full-page capture — auto-scrolling</span></div>
+              <div class="tour-view">
+                <img src="assets/cs-chiro-tour.webp" alt="Full-length capture of the Advanced Longevity Protocol page: dark hero with biological age reversal stats, treatment taxonomy, core strategies, clinical stack, and outcome metrics" loading="lazy">
+                <span class="tour-hint" aria-hidden="true">hover to pause</span>
+              </div>
+            </div>
             <div data-optional hidden>
               <span class="bframe-title">Before / After — drag to compare</span>
               <div class="bframe">
@@ -744,7 +838,7 @@ footer{
           <div class="cs-head">
             <canvas class="cs-canvas" data-scene="web3" aria-hidden="true"></canvas>
             <span class="cs-tag">Emerging Tech Consulting</span>
-            <span class="cs-num" aria-hidden="true">04</span>
+            <span class="cs-num" aria-hidden="true">05</span>
           </div>
           <div class="cs-body">
             <h3>Web3 Go-to-Market Strategy &amp; Product Advising</h3>
@@ -1185,6 +1279,63 @@ document.querySelectorAll('[data-optional]').forEach(box => {
       const sg = ctx.createLinearGradient(0, sy - 30, 0, sy + 30);
       sg.addColorStop(0, 'rgba(129,140,248,0)'); sg.addColorStop(.5, 'rgba(129,140,248,.10)'); sg.addColorStop(1, 'rgba(129,140,248,0)');
       ctx.fillStyle = sg; ctx.fillRect(0, sy - 30, W, 60);
+    },
+
+    // 02b — quant engine: five-pillar radar + score gauge + drifting sparklines
+    quant(ctx, W, H, t) {
+      grid(ctx, W, H, 'rgba(74,222,128,.05)');
+      // radar pentagon, five pillars
+      const cx = W * .3, cy = H * .52, R = Math.min(H * .36, 62);
+      for (const f of [1, .66, .33]) {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a = -Math.PI / 2 + i * TAU / 5;
+          const x = cx + Math.cos(a) * R * f, y = cy + Math.sin(a) * R * f;
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.closePath(); ctx.strokeStyle = 'rgba(74,222,128,.18)'; ctx.lineWidth = 1; ctx.stroke();
+      }
+      ctx.beginPath();
+      const vals = [];
+      for (let i = 0; i < 5; i++) {
+        const v = .55 + .38 * (0.5 + 0.5 * Math.sin(t * .8 + i * 2.1));
+        vals.push(v);
+        const a = -Math.PI / 2 + i * TAU / 5;
+        const x = cx + Math.cos(a) * R * v, y = cy + Math.sin(a) * R * v;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(74,222,128,.14)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(134,239,172,.85)'; ctx.lineWidth = 1.6; ctx.stroke();
+      vals.forEach((v, i) => {
+        const a = -Math.PI / 2 + i * TAU / 5;
+        ctx.fillStyle = '#86EFAC';
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v, 2.4, 0, TAU); ctx.fill();
+      });
+      // score gauge
+      const gx = W * .62, gy = H * .55, GR = Math.min(H * .3, 52);
+      ctx.beginPath(); ctx.arc(gx, gy, GR, Math.PI * .75, Math.PI * 2.25);
+      ctx.strokeStyle = 'rgba(148,163,184,.18)'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.stroke();
+      const p = .78 + .16 * (0.5 + 0.5 * Math.sin(t * .5));
+      const end = Math.PI * .75 + Math.PI * 1.5 * p;
+      ctx.beginPath(); ctx.arc(gx, gy, GR, Math.PI * .75, end);
+      ctx.strokeStyle = '#4ADE80'; ctx.shadowColor = 'rgba(74,222,128,.8)'; ctx.shadowBlur = 8; ctx.stroke();
+      ctx.shadowBlur = 0; ctx.lineWidth = 1; ctx.lineCap = 'butt';
+      ctx.fillStyle = '#86EFAC';
+      ctx.beginPath(); ctx.arc(gx + Math.cos(end) * GR, gy + Math.sin(end) * GR, 4, 0, TAU); ctx.fill();
+      // drifting sparklines on the right
+      const sx0 = W * .78;
+      if (sx0 < W - 60) {
+        for (let r = 0; r < 3; r++) {
+          const yb = H * (.3 + r * .22);
+          ctx.beginPath();
+          for (let x = sx0; x < W - 24; x += 5) {
+            const y = yb - Math.sin(x * .06 + t * (1 + r * .3)) * 7 - Math.sin(x * .021 - t * .6) * 5;
+            x === sx0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = `rgba(74,222,128,${.5 - r * .13})`; ctx.lineWidth = 1.2; ctx.stroke();
+        }
+      }
     },
 
     // 04 — rotating hex chain with traveling pulses + orbiting nodes
