@@ -85,13 +85,24 @@ header{
 }
 .nav{display:flex;align-items:center;justify-content:space-between;height:68px}
 .brand{
-  font-family:var(--font-display);font-weight:700;font-size:1.05rem;
-  letter-spacing:-.01em;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:10px;
+  color:var(--text);text-decoration:none;display:flex;align-items:center;gap:12px;
 }
 .brand .dot{
-  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
-  background:var(--grad);color:#0B1020;font-size:.8rem;font-weight:700;flex:0 0 auto;
+  width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+  background:var(--grad);color:#0B1020;font-family:var(--font-display);
+  font-size:.82rem;font-weight:700;flex:0 0 auto;
+  box-shadow:0 4px 14px rgba(99,102,241,.35);
 }
+.brand-text{display:flex;flex-direction:column;line-height:1.2}
+.brand-name{
+  font-family:var(--font-display);font-weight:700;font-size:.98rem;letter-spacing:-.01em;
+}
+.brand-sub{
+  font-family:var(--font-mono);font-size:.6rem;font-weight:500;
+  letter-spacing:.26em;text-transform:uppercase;
+  background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+}
+@media(max-width:400px){.brand-sub{letter-spacing:.18em}}
 .nav-links{display:flex;align-items:center;gap:6px;list-style:none}
 .nav-links a{
   font-size:.9rem;font-weight:500;color:var(--muted);text-decoration:none;
@@ -605,7 +616,13 @@ footer{
 <div id="progress" aria-hidden="true"></div>
 <header>
   <div class="wrap nav">
-    <a class="brand" href="#top"><span class="dot">AC</span>alexcontner.com</a>
+    <a class="brand" href="#top">
+      <span class="dot">AC</span>
+      <span class="brand-text">
+        <span class="brand-name">Alex Contner</span>
+        <span class="brand-sub">Portfolio Site</span>
+      </span>
+    </a>
     <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="nav-menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
