@@ -1,7 +1,3 @@
-import hashlib
-import os
-import tempfile
-
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -464,12 +460,7 @@ def render_table(table_df: pd.DataFrame, held_symbols: set):
     inner_height = min(640, 46 + 34 * len(table_df))
     doc = sortable_table_doc("".join(head_parts), "".join(body_parts), inner_height)
     if hasattr(st, "iframe"):
-        # st.iframe wants a file, so park the doc in a content-addressed temp file.
-        doc_path = os.path.join(tempfile.gettempdir(), f"dash_table_{hashlib.md5(doc.encode()).hexdigest()}.html")
-        if not os.path.exists(doc_path):
-            with open(doc_path, "w") as fh:
-                fh.write(doc)
-        st.iframe(doc_path, height=inner_height + 18)
+        st.iframe(doc, height=inner_height + 18)
     else:
         components.html(doc, height=inner_height + 18, scrolling=False)
 
